@@ -624,7 +624,7 @@ export default function TrackPosturePage() {
             padding: '1.25rem', borderRadius: 'var(--radius)',
             border: '1px solid var(--border)',
             borderLeft: `4px solid ${postureColor}`,
-            minHeight: '260px',
+            height: '270px',
             display: 'flex', flexDirection: 'column'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -634,7 +634,7 @@ export default function TrackPosturePage() {
               </h3>
             </div>
             
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', paddingRight: '4px' }}>
               {trackingState === 'TRACKING' && (postureState === 'BAD_PENDING' || postureState === 'BAD_CONFIRMED') && postureTypes.length > 0 ? (
                 postureTypes.slice(0, 3).map((pt) => {
                   const RECOMMENDATIONS: Record<string, string> = {
@@ -653,10 +653,10 @@ export default function TrackPosturePage() {
                   };
                   return (
                     <div key={pt}>
-                      <div style={{ color: postureColor, fontWeight: 700, fontSize: '1.05rem', marginBottom: '2px' }}>
+                      <div style={{ color: postureColor, fontWeight: 700, fontSize: '1rem', marginBottom: '0px', lineHeight: '1.2' }}>
                         {pt}
                       </div>
-                      <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, color: 'var(--text)' }}>
+                      <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, color: 'var(--text)', lineHeight: '1.4' }}>
                         {RECOMMENDATIONS[pt] || "Adjust your posture."}
                       </p>
                     </div>
@@ -664,10 +664,10 @@ export default function TrackPosturePage() {
                 })
               ) : (
                 <div>
-                  <div style={{ color: postureColor, fontWeight: 700, fontSize: '1.1rem', marginBottom: '4px' }}>
+                  <div style={{ color: postureColor, fontWeight: 700, fontSize: '1.05rem', marginBottom: '4px', lineHeight: '1.2' }}>
                     {postureLabel}
                   </div>
-                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, color: 'var(--text)' }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 500, color: 'var(--text)', lineHeight: '1.4' }}>
                     {suggestionText}
                   </p>
                 </div>

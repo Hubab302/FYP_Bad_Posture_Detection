@@ -82,9 +82,9 @@ class PostureClassifier:
         t_lean = self._smoothed.get("torso_lean", 0)
         combined_lean = (h_offset + t_lean) / 2
 
-        if combined_lean < -LEAN_THRESHOLD:
+        if combined_lean > LEAN_THRESHOLD:
             detected_types.append("Leaning Left")
-        elif combined_lean > LEAN_THRESHOLD:
+        elif combined_lean < -LEAN_THRESHOLD:
             detected_types.append("Leaning Right")
 
         # Leaning Back / Too Close

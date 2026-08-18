@@ -70,7 +70,9 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-          {error && <div className="error-message">{error}</div>}
+          <div className="error-slot">
+            {error && <div className="error-message">{error}</div>}
+          </div>
 
           <div className="form-group">
             <label htmlFor="email">Email</label>

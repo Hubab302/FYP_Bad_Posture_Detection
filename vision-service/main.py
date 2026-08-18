@@ -178,7 +178,7 @@ async def stop_tracking():
 
     # Finalize stats
     logger.info(f"MONITORING_FROZEN             t={time.time():.3f}")
-    final_stats = state_machine.finalize()
+    final_stats = state_machine.finalize(cutoff=t0)
     logger.info(f"FINAL_SNAPSHOT_CAPTURED       t={time.time():.3f}")
 
     # Release camera immediately (BEFORE waiting for DB)

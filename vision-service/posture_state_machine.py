@@ -142,10 +142,10 @@ class PostureStateMachine:
             "timestamp": time.time(),
         }
 
-    def get_stats(self) -> dict:
+    def get_stats(self, cutoff: float | None = None) -> dict:
         """Get current tracking period statistics (includes ongoing segment)."""
-        now = time.time()
-        ongoing = now - self._segment_start
+        now = cutoff if cutoff is not None else time.time()
+        ongoing = max(0, now - self._segment_start)
 
         good = self._good_seconds
         bad = self._bad_seconds
@@ -166,21 +166,23 @@ class PostureStateMachine:
             "alertCount": self._alert_count,
         }
 
-    def finalize(self) -> dict:
+    def finalize(self, cutoff: float | None = None) -> dict:
         """Close last segment, stop monitoring clock, return final stats."""
-        now = time.time()
-        segment_duration = now - self._segment_start
+        now = cutoff if cutoff is not None else time.time()
+        final_stats = self.get_stats(cutoff=now)
+        
+        segment_duration = max(0, now - self._segment_start)
         if self.state in ("GOOD", "BAD_PENDING", "BAD_CONFIRMED", "UNOBSERVED"):
             self._close_segment(now, segment_duration)
 
         # Stop monitoring clock
         if not self._monitoring_paused and self._monitoring_start is not None:
-            self._monitoring_accumulated += now - self._monitoring_start
+            self._monitoring_accumulated += max(0, now - self._monitoring_start)
             self._monitoring_paused = True
 
         self.state = "STOPPED"
         self._bad_streak_start = None
-        return self.get_stats()
+        return final_stats
 
     def on_calibration_complete(self):
         """Transition from CALIBRATING to READY_TO_START or resume TRACKING."""

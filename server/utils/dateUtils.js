@@ -139,6 +139,30 @@ function clampToToday(dateStr) {
   return dateStr > today ? today : dateStr;
 }
 
+/**
+ * Splits a time range into chunks per local calendar day.
+ * @param {Date} start
+ * @param {Date} end
+ * @returns {Array<{ localDate: string, durationSeconds: number }>}
+ */
+function splitTimeRangeByLocalDate(start, end) {
+  const result = [];
+  let currentStart = new Date(start.getTime());
+  
+  while (currentStart < end) {
+    const localDate = toLocalDateStr(currentStart);
+    const d = parseLocalDate(localDate);
+    d.setDate(d.getDate() + 1); // Next midnight
+    
+    const chunkEnd = d < end ? d : end;
+    const durationSeconds = (chunkEnd.getTime() - currentStart.getTime()) / 1000;
+    
+    result.push({ localDate, durationSeconds });
+    currentStart = chunkEnd;
+  }
+  return result;
+}
+
 module.exports = {
   getTodayLocal,
   getDaysAgo,
@@ -150,4 +174,5 @@ module.exports = {
   getRollingSevenDayWindow,
   getLocalDatesInRange,
   clampToToday,
+  splitTimeRangeByLocalDate,
 };

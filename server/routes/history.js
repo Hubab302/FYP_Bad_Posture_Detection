@@ -142,6 +142,16 @@ router.get('/', requireAuth, async (req, res, next) => {
       status: 'active'
     });
 
+    const { getSessionDailyDeltas } = require('../services/aggregationService');
+    const activeDeltasByDate = {};
+    for (const s of activeSessions) {
+      const deltas = await getSessionDailyDeltas(s);
+      for (const [date, delta] of Object.entries(deltas)) {
+        if (!activeDeltasByDate[date]) activeDeltasByDate[date] = [];
+        activeDeltasByDate[date].push(delta);
+      }
+    }
+
     // Build a complete response covering every calendar day in range
     const allDates = getLocalDatesInRange(from, to);
     const result = [];
@@ -171,25 +181,20 @@ router.get('/', requireAuth, async (req, res, next) => {
       }
 
       // Add active session data dynamically for live sessions on this date
-      const activeSessionsForDate = activeSessions.filter(
-        (s) => toLocalDateStr(s.startedAt) === dateStr
-      );
+      const deltasForDate = activeDeltasByDate[dateStr] || [];
       
-      if (activeSessionsForDate.length > 0) {
+      if (deltasForDate.length > 0) {
         let typeDurations = existing?.postureTypeDurations instanceof Map 
             ? Object.fromEntries(existing.postureTypeDurations) 
             : (recordObj.postureTypeDurations || {});
 
-        for (const s of activeSessionsForDate) {
-           recordObj.goodDurationSeconds += s.goodDurationSeconds || 0;
-           recordObj.badDurationSeconds += s.badDurationSeconds || 0;
+        for (const delta of deltasForDate) {
+           recordObj.goodDurationSeconds += delta.good || 0;
+           recordObj.badDurationSeconds += delta.bad || 0;
            recordObj.monitoringDurationSeconds = recordObj.goodDurationSeconds + recordObj.badDurationSeconds;
            
-           if (s.postureTypeDurations) {
-             const sDurations = s.postureTypeDurations instanceof Map ? Object.fromEntries(s.postureTypeDurations) : s.postureTypeDurations;
-             for (const [type, dur] of Object.entries(sDurations)) {
-                typeDurations[type] = (typeDurations[type] || 0) + dur;
-             }
+           for (const [type, dur] of Object.entries(delta.types || {})) {
+              typeDurations[type] = (typeDurations[type] || 0) + dur;
            }
         }
         

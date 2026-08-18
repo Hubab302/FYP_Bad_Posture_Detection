@@ -2,7 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const PostureSession = require('../models/PostureSession');
 const { createTrackingToken } = require('../utils/tokenUtils');
-const { updateDailyAggregate } = require('../services/aggregationService');
+const { distributeSessionToDailyAggregates, getSessionDailyDeltas } = require('../services/aggregationService');
 const { toLocalDateStr, getTodayLocal } = require('../utils/dateUtils');
 const PostureHistory = require('../models/PostureHistory');
 const logger = require('../utils/logger');
@@ -23,18 +23,7 @@ router.post('/sessions', requireAuth, async (req, res, next) => {
       await s.save();
       
       // Push accumulated durations to daily aggregate
-      const localDate = toLocalDateStr(s.startedAt);
-      const typeDurations = s.postureTypeDurations instanceof Map
-        ? Object.fromEntries(s.postureTypeDurations)
-        : (s.postureTypeDurations || {});
-        
-      await updateDailyAggregate(
-        userId,
-        localDate,
-        s.goodDurationSeconds || 0,
-        s.badDurationSeconds || 0,
-        typeDurations
-      );
+      await distributeSessionToDailyAggregates(s);
       
       logger.warn(`Previous session ${s._id} marked as interrupted and aggregated`);
     }
@@ -85,6 +74,12 @@ router.get('/sessions/daily-totals', requireAuth, async (req, res, next) => {
       if (toLocalDateStr(s.startedAt) === today) {
         totalGood += s.goodDurationSeconds || 0;
         totalBad += s.badDurationSeconds || 0;
+      } else {
+        const deltas = await getSessionDailyDeltas(s);
+        if (deltas[today]) {
+          totalGood += deltas[today].good || 0;
+          totalBad += deltas[today].bad || 0;
+        }
       }
     }
 
@@ -134,18 +129,7 @@ router.post('/sessions/:sessionId/stop', requireAuth, async (req, res, next) => 
     await session.save();
 
     // Update daily aggregate for history/report
-    const localDate = toLocalDateStr(session.startedAt);
-    const typeDurations = session.postureTypeDurations instanceof Map
-      ? Object.fromEntries(session.postureTypeDurations)
-      : {};
-
-    await updateDailyAggregate(
-      userId,
-      localDate,
-      session.goodDurationSeconds,
-      session.badDurationSeconds,
-      typeDurations
-    );
+    await distributeSessionToDailyAggregates(session);
 
     logger.info(`Session ${sessionId} completed`);
     res.json({ message: 'Session stopped successfully.', session });

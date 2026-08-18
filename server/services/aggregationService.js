@@ -1,8 +1,9 @@
 const PostureHistory = require('../models/PostureHistory');
 const PostureSession = require('../models/PostureSession');
 const { calcPercentage } = require('../utils/formatters');
-const { toLocalDateStr } = require('../utils/dateUtils');
+const { toLocalDateStr, splitTimeRangeByLocalDate } = require('../utils/dateUtils');
 const logger = require('../utils/logger');
+const PostureSegment = require('../models/PostureSegment');
 
 /**
  * Centralized aggregation service — single source of truth for all duration/percentage calculations.
@@ -147,4 +148,91 @@ async function aggregateWeeklyReport(userId, fromDate, toDate) {
   return calculateStats(totalGood, totalBad, combinedTypeDurations);
 }
 
-module.exports = { calculateStats, updateDailyAggregate, aggregateWeeklyReport };
+/**
+ * Calculates the exact duration (good/bad/types) of a session distributed across local calendar dates.
+ * Honors authoritative PostureSegment chunks and strictly splits remaining session totals.
+ */
+async function getSessionDailyDeltas(session) {
+  const segments = await PostureSegment.find({ sessionId: session._id }).sort({ startedAt: 1 });
+  
+  const dailyDeltas = {};
+  const addDelta = (date, state, dur, types) => {
+    if (!dailyDeltas[date]) dailyDeltas[date] = { good: 0, bad: 0, types: {} };
+    if (state === 'good') dailyDeltas[date].good += dur;
+    if (state === 'bad') dailyDeltas[date].bad += dur;
+    if (types) {
+      for (const t of types) {
+        dailyDeltas[date].types[t] = (dailyDeltas[date].types[t] || 0) + dur;
+      }
+    }
+  };
+
+  let segGood = 0;
+  let segBad = 0;
+  let lastEndedAt = session.startedAt;
+  
+  for (const seg of segments) {
+    if (!seg.endedAt) continue;
+    const chunks = splitTimeRangeByLocalDate(seg.startedAt, seg.endedAt);
+    for (const chunk of chunks) {
+      addDelta(chunk.localDate, seg.state, chunk.durationSeconds, seg.postureTypes);
+    }
+    if (seg.state === 'good') segGood += seg.durationSeconds;
+    if (seg.state === 'bad') segBad += seg.durationSeconds;
+    if (seg.endedAt > lastEndedAt) lastEndedAt = seg.endedAt;
+  }
+  
+  // Allocate any remaining time missing from segments up to the session total.
+  const remGood = Math.max(0, (session.goodDurationSeconds || 0) - segGood);
+  const remBad = Math.max(0, (session.badDurationSeconds || 0) - segBad);
+  
+  if (remGood > 0) {
+    const end = new Date(lastEndedAt.getTime() + remGood * 1000);
+    const chunks = splitTimeRangeByLocalDate(lastEndedAt, end);
+    for (const chunk of chunks) addDelta(chunk.localDate, 'good', chunk.durationSeconds, []);
+    lastEndedAt = end;
+  }
+  
+  if (remBad > 0) {
+    const end = new Date(lastEndedAt.getTime() + remBad * 1000);
+    const chunks = splitTimeRangeByLocalDate(lastEndedAt, end);
+    const sessionTypes = session.postureTypeDurations instanceof Map 
+      ? Object.fromEntries(session.postureTypeDurations) 
+      : (session.postureTypeDurations || {});
+    const remTypes = {};
+    for (const [t, dur] of Object.entries(sessionTypes)) {
+      let allocated = 0;
+      for (const date in dailyDeltas) allocated += (dailyDeltas[date].types[t] || 0);
+      const rem = Math.max(0, dur - allocated);
+      if (rem > 0) remTypes[t] = rem;
+    }
+    
+    let typesApplied = false;
+    for (const chunk of chunks) {
+      addDelta(chunk.localDate, 'bad', chunk.durationSeconds, typesApplied ? [] : Object.keys(remTypes));
+      if (!typesApplied) {
+        for (const t in remTypes) {
+           dailyDeltas[chunk.localDate].types[t] = (dailyDeltas[chunk.localDate].types[t] || 0) + remTypes[t];
+        }
+        typesApplied = true;
+      }
+    }
+    lastEndedAt = end;
+  }
+
+  return dailyDeltas;
+}
+
+/**
+ * Persists a completed or interrupted session's data exactly into its corresponding daily aggregates.
+ */
+async function distributeSessionToDailyAggregates(session) {
+  const dailyDeltas = await getSessionDailyDeltas(session);
+  for (const [date, delta] of Object.entries(dailyDeltas)) {
+    if (delta.good > 0 || delta.bad > 0) {
+      await updateDailyAggregate(session.userId, date, delta.good, delta.bad, delta.types);
+    }
+  }
+}
+
+module.exports = { calculateStats, updateDailyAggregate, aggregateWeeklyReport, getSessionDailyDeltas, distributeSessionToDailyAggregates };

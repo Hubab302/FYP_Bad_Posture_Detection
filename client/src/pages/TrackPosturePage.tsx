@@ -127,6 +127,7 @@ export default function TrackPosturePage() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const toastIdRef = useRef(0);
+  const snoozeUntilRef = useRef<number>(0);
   const cameraImgRef = useRef<HTMLImageElement | null>(null);
 
   // ─── Load today's accumulated monitoring on mount ───
@@ -255,12 +256,18 @@ export default function TrackPosturePage() {
 
         // Handle alerts
         setToasts(prevToasts => {
-          // If good, immediately close any active bad posture toasts
+          // If good, immediately close any active bad posture toasts and clear snoozes
           if (data.state === 'GOOD') {
+            snoozeUntilRef.current = 0;
             return [];
           }
           
           if (data.alertTriggered) {
+            // Ignore backend repeats if user explicitly snoozed it recently
+            if (snoozeUntilRef.current > 0 && Date.now() < snoozeUntilRef.current) {
+              return prevToasts;
+            }
+            
             const streak = data.badStreakSeconds || 0;
             const mins = Math.floor(streak / 60);
             const secs = Math.floor(streak % 60);
@@ -288,6 +295,24 @@ export default function TrackPosturePage() {
               suggestion: data.suggestion || prevToasts[0].suggestion,
               postureTypes: pts,
             }];
+          } else if (prevToasts.length === 0 && data.state === 'BAD_CONFIRMED') {
+            // If the user previously dismissed an alert, check if 60s has passed to bring it back
+            if (snoozeUntilRef.current > 0 && Date.now() >= snoozeUntilRef.current) {
+              const streak = data.badStreakSeconds || 0;
+              const mins = Math.floor(streak / 60);
+              const secs = Math.floor(streak % 60);
+              const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+              const pts = data.postureTypes || [];
+              
+              snoozeUntilRef.current = 0; // Clear the snooze timer
+              
+              return [{
+                id: ++toastIdRef.current,
+                durationStr: durationStr,
+                suggestion: data.suggestion || '',
+                postureTypes: pts,
+              }];
+            }
           }
           
           return prevToasts;
@@ -436,6 +461,7 @@ export default function TrackPosturePage() {
 
   const removeToast = (id: number) => {
     setToasts(prev => prev.filter(t => t.id !== id));
+    snoozeUntilRef.current = Date.now() + 60000; // start fresh 60s snooze from this exact moment
   };
 
   // ─── Derived UI ───

@@ -19,7 +19,7 @@ function sessionConfig(mongooseConnection) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: null, // session cookie — dies when browser closes
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days persistent cookie
     },
     name: 'posture.sid',
   };

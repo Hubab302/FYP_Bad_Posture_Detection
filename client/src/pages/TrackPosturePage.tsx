@@ -88,16 +88,18 @@ function getPostureLabel(trackingState: TrackingState, postureState: string, pos
 }
 
 function getPostureColor(trackingState: TrackingState, postureState: string): string {
-  if (trackingState === 'IDLE' || trackingState === 'STOPPING') return 'var(--text-secondary)';
+  const NEUTRAL = '#94a3b8';
+  if (trackingState === 'IDLE' || trackingState === 'STOPPING') return NEUTRAL;
   if (trackingState === 'CALIBRATING' || trackingState === 'RECALIBRATING') return 'var(--warning)';
-  if (trackingState === 'READY') return 'var(--accent)';
+  if (trackingState === 'READY') return NEUTRAL;
+  if (trackingState === 'CAMERA_UNAVAILABLE' || trackingState === 'ENGINE_UNAVAILABLE') return NEUTRAL;
 
   switch (postureState) {
     case 'GOOD': return 'var(--success)';
     case 'BAD_PENDING':
     case 'BAD_CONFIRMED': return 'var(--danger)';
-    case 'UNOBSERVED': return 'var(--muted)';
-    default: return 'var(--text-secondary)';
+    case 'UNOBSERVED': return NEUTRAL;
+    default: return NEUTRAL;
   }
 }
 
@@ -392,6 +394,10 @@ export default function TrackPosturePage() {
   const postureColor = getPostureColor(trackingState, postureState);
   const suggestionText = getSuggestionForState(trackingState, postureState, liveSuggestion);
 
+  // Visual State Variables
+  const NEUTRAL_BORDER = '#94a3b8';
+  const isActualBadState = trackingState === 'TRACKING' && (postureState === 'BAD_PENDING' || postureState === 'BAD_CONFIRMED');
+
   // ─── Engine Unavailable View ───
   if (trackingState === 'ENGINE_UNAVAILABLE') {
     return (
@@ -614,11 +620,9 @@ export default function TrackPosturePage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', minWidth: 0, overflow: 'hidden' }}>
           {/* Posture Guidance */}
           <div className="status-card" style={{
-            background: trackingState === 'TRACKING' && postureState !== 'GOOD' && postureState !== 'UNOBSERVED' && postureTypes.length > 0
-              ? 'var(--accent-bg)' : 'var(--surface)',
+            background: 'var(--surface)',
             padding: '1.25rem', borderRadius: 'var(--radius)',
-            border: `1px solid ${trackingState === 'TRACKING' && postureState !== 'GOOD' && postureState !== 'UNOBSERVED' && postureTypes.length > 0
-              ? 'var(--accent-light)' : 'var(--border)'}`,
+            border: '1px solid var(--border)',
             borderLeft: `4px solid ${postureColor}`,
             minHeight: '260px',
             display: 'flex', flexDirection: 'column'
@@ -676,6 +680,7 @@ export default function TrackPosturePage() {
             <div className="status-card" style={{
               background: 'var(--surface)', padding: '1rem', borderRadius: 'var(--radius)',
               border: '1px solid var(--border)',
+              borderLeft: `4px solid ${trackingState === 'TRACKING' ? 'var(--accent)' : NEUTRAL_BORDER}`,
               display: 'flex', flexDirection: 'column', justifyContent: 'center'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
@@ -684,7 +689,7 @@ export default function TrackPosturePage() {
                   Monitoring
                 </h3>
               </div>
-              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700 }}>
+              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text)' }}>
                 {formatDuration(totalMonitoringDuration)}
               </div>
             </div>
@@ -693,16 +698,16 @@ export default function TrackPosturePage() {
             <div className="status-card" style={{
               background: 'var(--surface)', padding: '1rem', borderRadius: 'var(--radius)',
               border: '1px solid var(--border)',
-              borderLeft: liveBadDuration > 0 ? '4px solid var(--danger)' : undefined,
+              borderLeft: `4px solid ${isActualBadState ? 'var(--danger)' : NEUTRAL_BORDER}`,
               display: 'flex', flexDirection: 'column', justifyContent: 'center'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                <AlertTriangle size={14} color="var(--text-secondary)" />
+                <AlertTriangle size={14} color={isActualBadState ? 'var(--danger)' : 'var(--text-secondary)'} />
                 <h3 style={{ margin: 0, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
                   Bad Streak
                 </h3>
               </div>
-              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, color: liveBadDuration > 0 ? 'var(--danger)' : 'var(--text)' }}>
+              <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, color: isActualBadState ? 'var(--danger)' : 'var(--text)' }}>
                 {formatDuration(liveBadDuration)}
               </div>
             </div>

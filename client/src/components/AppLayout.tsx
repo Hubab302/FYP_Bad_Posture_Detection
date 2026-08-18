@@ -1,8 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import LogoutModal from './LogoutModal';
 import { LayoutDashboard, Camera, History, FileText, LogOut, Activity } from 'lucide-react';
+
+const VISION_SERVICE_URL = 'http://localhost:8000';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -24,6 +26,14 @@ export default function AppLayout() {
     { to: '/history', label: 'History', icon: <History size={20} /> },
     { to: '/report', label: 'Report', icon: <FileText size={20} /> },
   ];
+
+  // Application-level Heartbeat watchdog
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch(`${VISION_SERVICE_URL}/heartbeat`, { method: 'POST' }).catch(() => { });
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="app-layout">

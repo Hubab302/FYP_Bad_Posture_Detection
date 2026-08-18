@@ -32,14 +32,18 @@ class CameraManager:
                 return True
 
             logger.info(f"Opening camera index {CAMERA_INDEX}...")
-            self._cap = cv2.VideoCapture(CAMERA_INDEX)
+            # Try to open up to 3 times to avoid driver release race conditions
+            for attempt in range(3):
+                self._cap = cv2.VideoCapture(CAMERA_INDEX)
+                if not self._cap.isOpened():
+                    self._cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+                if self._cap.isOpened():
+                    break
+                logger.warning(f"Failed to open camera on attempt {attempt+1}. Retrying...")
+                time.sleep(0.5)
 
-            if not self._cap.isOpened():
-                # Fallback to DSHOW if default fails
-                self._cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
-
-            if not self._cap.isOpened():
-                logger.error("Failed to open camera")
+            if not self._cap or not self._cap.isOpened():
+                logger.error("Failed to open camera after multiple attempts")
                 self._cap = None
                 self._is_open = False
                 return False
@@ -95,4 +99,5 @@ class CameraManager:
             self._capture_thread.join(timeout=2.0)
             self._capture_thread = None
             
+        time.sleep(0.5) # Allow driver to fully release hardware
         logger.info("Camera released")

@@ -172,15 +172,31 @@ export default function TrackPosturePage() {
     init();
   }, []);
 
-  // ─── Visibility change for notifications ───
+  // ─── Ref for authoritative unmount/visibility cancellation ───
+  const trackingStateRef = useRef(trackingState);
+  useEffect(() => {
+    trackingStateRef.current = trackingState;
+  }, [trackingState]);
+
+  // ─── Visibility change for notifications & cancellation ───
   useEffect(() => {
     const handleVisibility = () => {
+      const isVisible = document.visibilityState === 'visible';
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
           type: 'visibility',
-          visible: document.visibilityState === 'visible',
+          visible: isVisible,
           focused: document.hasFocus(),
         }));
+      }
+
+      // If active calibration is hidden, cancel it immediately.
+      if (!isVisible) {
+        const state = trackingStateRef.current;
+        if (state === 'CALIBRATING' || state === 'RECALIBRATING' || state === 'STARTING_CAMERA') {
+          // Force stop calibration, discard partial samples, return to IDLE
+          stopTracking();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -259,9 +275,15 @@ export default function TrackPosturePage() {
     };
   }, []);
 
-  // ─── Cleanup on unmount ───
+  // ─── Cleanup on unmount (Navigation Cancellation) ───
   useEffect(() => {
     return () => {
+      // If user leaves the Track route while actively calibrating, cancel attempt
+      const state = trackingStateRef.current;
+      if (state === 'CALIBRATING' || state === 'RECALIBRATING' || state === 'STARTING_CAMERA') {
+        fetch(`${VISION_SERVICE_URL}/tracking/stop`, { method: 'POST', keepalive: true }).catch(() => {});
+      }
+
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;

@@ -139,10 +139,10 @@ export default function HistoryPage() {
               <tr>
                 <th>Date</th>
                 <th>Monitoring Duration</th>
-                <th>Posture Types</th>
                 <th>Bad Posture Duration</th>
                 <th>Bad Posture %</th>
                 <th>Good Posture %</th>
+                <th>Posture Types</th>
               </tr>
             </thead>
             <tbody>
@@ -154,6 +154,11 @@ export default function HistoryPage() {
                   ) : (
                     <>
                       <td className="mono">{formatDuration(record.monitoringDurationSeconds)}</td>
+                      <td className="mono">{formatDuration(record.badDurationSeconds)}</td>
+                      <td className={record.badPosturePercentage > 50 ? 'danger' : ''}>
+                        {formatPercentage(record.badPosturePercentage)}
+                      </td>
+                      <td className="success">{formatPercentage(record.goodPosturePercentage)}</td>
                       <td>
                         {record.postureTypes && record.postureTypes.length > 0 ? (
                           <div className="posture-types-text">
@@ -163,11 +168,6 @@ export default function HistoryPage() {
                           <span className="text-muted">—</span>
                         )}
                       </td>
-                      <td className="mono">{formatDuration(record.badDurationSeconds)}</td>
-                      <td className={record.badPosturePercentage > 50 ? 'danger' : ''}>
-                        {formatPercentage(record.badPosturePercentage)}
-                      </td>
-                      <td className="success">{formatPercentage(record.goodPosturePercentage)}</td>
                     </>
                   )}
                 </tr>

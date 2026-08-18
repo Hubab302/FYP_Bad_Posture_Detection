@@ -126,9 +126,18 @@ class PostureStateMachine:
                 logger.info(f"State: BAD_PENDING -> BAD_CONFIRMED (alert #{self._alert_count})")
 
         elif self.state == "BAD_CONFIRMED":
-            # Update types for suggestion display but don't create new alerts
+            # Update types for suggestion display
             if self._current_posture_types != posture_types:
                 self._current_posture_types = posture_types
+
+            # Check for repeat alert based on continuous Bad Streak
+            streak = self.bad_streak_duration
+            time_since_last = now - self._last_alert_time if self._last_alert_time else 0
+            if time_since_last >= config.BAD_ALERT_REPEAT_SECONDS:
+                self._alert_count += 1
+                self._last_alert_time = now
+                alert = self._make_alert(posture_types, streak, self._alert_count)
+                logger.info(f"State: BAD_CONFIRMED -> repeat alert #{self._alert_count}")
 
         return alert
 

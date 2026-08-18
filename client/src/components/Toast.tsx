@@ -1,23 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface ToastProps {
   message: string;
   suggestion?: string;
   postureType?: string;
-  duration?: number;
   onClose: () => void;
 }
 
-export default function Toast({ message, suggestion, postureType, duration = 8000, onClose }: ToastProps) {
+export default function Toast({ message, suggestion, postureType, onClose }: ToastProps) {
   const [exiting, setExiting] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setExiting(true);
-      setTimeout(onClose, 300);
-    }, duration);
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
 
   return (
     <div className={`toast ${exiting ? 'toast-exit' : 'toast-enter'}`}>

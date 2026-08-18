@@ -19,11 +19,27 @@ RECOMMENDATIONS: dict[str, str] = {
 
 
 def get_recommendation(posture_types: list[str]) -> str:
-    """Get the primary recommendation for the given posture types."""
+    """Get combined recommendations for the given posture types."""
+    recs = []
     for pt in posture_types:
         if pt in RECOMMENDATIONS:
-            return RECOMMENDATIONS[pt]
-    return ""
+            # lowercase the first letter and remove trailing period for combining
+            rec = RECOMMENDATIONS[pt].strip()
+            if rec.endswith('.'):
+                rec = rec[:-1]
+            rec = rec[0].lower() + rec[1:]
+            recs.append(rec)
+            
+    if not recs:
+        return ""
+        
+    if len(recs) == 1:
+        return recs[0].capitalize() + "."
+    elif len(recs) == 2:
+        return f"{recs[0].capitalize()} and {recs[1]}."
+    else:
+        # e.g., "Straighten your back, level your shoulders, and sit straight and move slightly right."
+        return f"{recs[0].capitalize()}, {', '.join(recs[1:-1])}, and {recs[-1]}."
 
 
 def get_alert_message(posture_types: list[str], bad_duration: float) -> str:

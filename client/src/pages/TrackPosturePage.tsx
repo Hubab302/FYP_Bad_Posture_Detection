@@ -254,17 +254,45 @@ export default function TrackPosturePage() {
         });
 
         // Handle alerts
-        if (data.alertTriggered) {
-          const id = ++toastIdRef.current;
-          setToasts([{
-            id,
-            message: data.alertMessage || 'Bad posture detected',
-            suggestion: data.alertSuggestion || data.suggestion || '',
-            postureType: (data.alertPostureTypes || data.postureTypes || []).join(', '),
-          }]);
-        } else if (data.state === 'GOOD') {
-          setToasts([]);
-        }
+        setToasts(prevToasts => {
+          // If good, immediately close any active bad posture toasts
+          if (data.state === 'GOOD') {
+            return [];
+          }
+          
+          // Trigger new alert if exactly at 60s, 180s, etc. (alertTriggered flag from backend)
+          if (data.alertTriggered) {
+            // Keep the previous ID if it exists to avoid completely unmounting the Toast (prevents flicker)
+            // Wait, actually the user wants ONE alert. We'll replace it completely.
+            return [{
+              id: ++toastIdRef.current,
+              message: data.alertMessage || 'Bad posture detected',
+              suggestion: data.alertSuggestion || data.suggestion || '',
+              postureType: (data.alertPostureTypes || data.postureTypes || []).join(', '),
+            }];
+          }
+          
+          // If a toast is ALREADY open and the user is STILL in a continuous bad state, update the content live
+          if (prevToasts.length > 0 && (data.state === 'BAD_PENDING' || data.state === 'BAD_CONFIRMED')) {
+            const streak = data.badStreakSeconds || 0;
+            const mins = Math.floor(streak / 60);
+            const secs = Math.floor(streak % 60);
+            const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            const pts = data.postureTypes || [];
+            
+            const typesStr = pts.length > 0 ? pts.join(' + ') : 'Bad Posture';
+            const newMessage = `${typesStr} detected for ${durationStr}`;
+            
+            return [{
+              ...prevToasts[0],
+              message: newMessage,
+              suggestion: data.suggestion || prevToasts[0].suggestion,
+              postureType: pts.join(', ') || prevToasts[0].postureType,
+            }];
+          }
+          
+          return prevToasts;
+        });
       } catch (err) {
         console.error('WebSocket parse error:', err);
       }

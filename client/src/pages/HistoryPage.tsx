@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Calendar } from 'lucide-react';
 import { historyApi, type HistoryRecord } from '../services/api';
 import { formatDuration, formatPercentage, formatDateDisplay, getTodayStr, addDays } from '../services/formatters';
 
@@ -6,44 +7,30 @@ export default function HistoryPage() {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [firstDataDate, setFirstDataDate] = useState<string | null>(null);
+  
+  const today = getTodayStr();
+  const maxStartDate = addDays(today, -6); // End date cannot exceed today
+  const [startDate, setStartDate] = useState(maxStartDate);
   const [hasData, setHasData] = useState(false);
-  const [viewMode, setViewMode] = useState<'weekly' | 'today'>('weekly');
 
-  // Load data range on mount
   useEffect(() => {
-    loadRange();
-  }, []);
+    loadRangeAndHistory(startDate);
+  }, [startDate]);
 
-  const loadRange = async () => {
-    try {
-      const range = await historyApi.getRange();
-      setHasData(range.hasData);
-      setFirstDataDate(range.firstDataDate);
-
-      if (range.hasData) {
-        const today = getTodayStr();
-        const from = addDays(today, -6);
-        setFromDate(from);
-        setToDate(today);
-        await loadHistory(from, today);
-      } else {
-        setLoading(false);
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load data range');
-      setLoading(false);
-    }
-  };
-
-  const loadHistory = async (from: string, to: string) => {
+  const loadRangeAndHistory = async (targetStartDate: string) => {
     setLoading(true);
     setError('');
     try {
-      const data = await historyApi.getHistory(from, to);
-      setHistory(data.history);
+      // Load range just to know if we have ANY data
+      const range = await historyApi.getRange();
+      setHasData(range.hasData);
+
+      if (range.hasData) {
+        const targetEndDate = addDays(targetStartDate, 6);
+        const data = await historyApi.getHistory(targetEndDate);
+        // Display newest first
+        setHistory(data.history.reverse());
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load history');
     } finally {
@@ -51,49 +38,29 @@ export default function HistoryPage() {
     }
   };
 
-  const navigateWeek = (direction: 'prev' | 'next') => {
-    const offset = direction === 'prev' ? -7 : 7;
-    const newFrom = addDays(fromDate, offset);
-    const newTo = addDays(toDate, offset);
-
-    const today = getTodayStr();
-    if (newTo > today) return;
-    if (firstDataDate && newTo < firstDataDate) return;
-
-    setFromDate(newFrom);
-    setToDate(newTo);
-    loadHistory(newFrom, newTo);
+  const navigateDays = (offset: number) => {
+    const newStart = addDays(startDate, offset);
+    if (newStart > maxStartDate) return; // Prevent future dates
+    setStartDate(newStart);
   };
 
-  const showToday = () => {
-    const today = getTodayStr();
-    setFromDate(today);
-    setToDate(today);
-    setViewMode('today');
-    loadHistory(today, today);
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.value;
+    if (selected > maxStartDate) {
+      setStartDate(maxStartDate);
+    } else {
+      setStartDate(selected);
+    }
   };
 
-  const showWeekly = () => {
-    const today = getTodayStr();
-    const from = addDays(today, -6);
-    setFromDate(from);
-    setToDate(today);
-    setViewMode('weekly');
-    loadHistory(from, today);
+  const openDatePicker = () => {
+    const input = document.getElementById('hidden-date-input') as HTMLInputElement;
+    if (input && typeof input.showPicker === 'function') {
+      input.showPicker();
+    }
   };
 
-  const canGoPrev = () => {
-    if (!firstDataDate) return false;
-    const newTo = addDays(toDate, -7);
-    return newTo >= firstDataDate;
-  };
-
-  const canGoNext = () => {
-    const today = getTodayStr();
-    return toDate < today;
-  };
-
-  if (!hasData && !loading) {
+  if (!hasData && !loading && history.length === 0) {
     return (
       <div className="history-page">
         <div className="page-header">
@@ -108,52 +75,58 @@ export default function HistoryPage() {
     );
   }
 
+  const startDateDisplay = formatDateDisplay(startDate);
+  const endDateDisplay = formatDateDisplay(addDays(startDate, 6));
+
   return (
     <div className="history-page">
       <div className="page-header">
         <h1>Posture History</h1>
       </div>
 
-      {/* View Mode Toggle */}
-      <div className="view-toggle">
-        <button
-          className={`toggle-btn ${viewMode === 'today' ? 'active' : ''}`}
-          onClick={showToday}
-        >
-          Current Day
-        </button>
-        <button
-          className={`toggle-btn ${viewMode === 'weekly' ? 'active' : ''}`}
-          onClick={showWeekly}
-        >
-          Weekly (7 Days)
-        </button>
-      </div>
-
-      {/* Navigation */}
-      {viewMode === 'weekly' && (
+      <div className="rolling-nav-container">
         <div className="history-nav">
           <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => navigateWeek('prev')}
-            disabled={!canGoPrev()}
+            className="btn btn-secondary btn-sm nav-arrow"
+            onClick={() => navigateDays(-1)}
+            title="Previous Day"
           >
-            ← Previous Week
+            ←
           </button>
-          <div className="date-range">
-            <span>{formatDateDisplay(fromDate)}</span>
-            <span className="range-separator">→</span>
-            <span>{formatDateDisplay(toDate)}</span>
+          <div className="date-range" title="7-Day Rolling Window">
+            <span>{startDateDisplay}</span>
+            <span className="range-separator"> &ndash; </span>
+            <span>{endDateDisplay}</span>
           </div>
+          
+          <div className="date-picker-icon-wrapper">
+             <button 
+               className="btn btn-secondary btn-sm nav-arrow calendar-btn" 
+               title="Choose start date" 
+               onClick={openDatePicker}
+             >
+               <Calendar size={16} strokeWidth={2} />
+             </button>
+             <input 
+               id="hidden-date-input"
+               type="date" 
+               value={startDate}
+               max={maxStartDate}
+               onChange={handleDateChange}
+               style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+             />
+          </div>
+
           <button
-            className="btn btn-secondary btn-sm"
-            onClick={() => navigateWeek('next')}
-            disabled={!canGoNext()}
+            className="btn btn-secondary btn-sm nav-arrow"
+            onClick={() => navigateDays(1)}
+            disabled={startDate >= maxStartDate}
+            title="Next Day"
           >
-            Next Week →
+            →
           </button>
         </div>
-      )}
+      </div>
 
       {error && <div className="error-message">{error}</div>}
 
@@ -161,7 +134,7 @@ export default function HistoryPage() {
         <div className="loading-state"><div className="spinner" /><p>Loading history...</p></div>
       ) : (
         <div className="history-table-wrapper">
-          <table className="history-table">
+          <table className="history-table compact-table">
             <thead>
               <tr>
                 <th>Date</th>
@@ -182,11 +155,9 @@ export default function HistoryPage() {
                     <>
                       <td className="mono">{formatDuration(record.monitoringDurationSeconds)}</td>
                       <td>
-                        {record.postureTypes.length > 0 ? (
-                          <div className="posture-types-cell">
-                            {record.postureTypes.map((t) => (
-                              <span key={t} className="posture-tag small">{t}</span>
-                            ))}
+                        {record.postureTypes && record.postureTypes.length > 0 ? (
+                          <div className="posture-types-text">
+                            {record.postureTypes.join(', ')}
                           </div>
                         ) : (
                           <span className="text-muted">—</span>

@@ -9,6 +9,7 @@ import TrackPosturePage from './pages/TrackPosturePage';
 import HistoryPage from './pages/HistoryPage';
 import ReportPage from './pages/ReportPage';
 import './index.css';
+import './history-report.css';
 
 export default function App() {
   return (

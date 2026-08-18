@@ -103,14 +103,14 @@ export const historyApi = {
       reportEligibleDate: string | null;
     }>('/history/range'),
 
-  getHistory: (from: string, to: string) =>
-    apiRequest<{ history: HistoryRecord[] }>(`/history?from=${from}&to=${to}`),
+  getHistory: (endDate: string) =>
+    apiRequest<{ history: HistoryRecord[] }>(`/history?endDate=${endDate}`),
 };
 
 // ─── Reports ───
 export const reportApi = {
-  generateWeekly: (from: string, to: string) =>
-    apiRequest('/reports/weekly', { method: 'POST', body: { from, to } }),
+  generateWeekly: (endDate: string) =>
+    apiRequest<{ report: WeeklyReport }>('/reports/weekly', { method: 'POST', body: { endDate } }),
 };
 
 // ─── Types ───

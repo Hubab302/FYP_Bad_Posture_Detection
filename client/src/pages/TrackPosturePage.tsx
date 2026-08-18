@@ -128,6 +128,8 @@ export default function TrackPosturePage() {
   const wsRef = useRef<WebSocket | null>(null);
   const toastIdRef = useRef(0);
   const snoozeUntilRef = useRef<number>(0);
+  const snoozeTimeoutRef = useRef<number | null>(null);
+  const latestTelemetryRef = useRef<any>(null);
   const cameraImgRef = useRef<HTMLImageElement | null>(null);
 
   // ─── Load today's accumulated monitoring on mount ───
@@ -230,6 +232,7 @@ export default function TrackPosturePage() {
     ws.onmessage = (event) => {
       try {
         const data: TelemetryData = JSON.parse(event.data);
+        latestTelemetryRef.current = data;
 
         setPostureState(data.state || '');
         setPostureTypes(data.postureTypes || []);
@@ -259,6 +262,10 @@ export default function TrackPosturePage() {
           // If good, immediately close any active bad posture toasts and clear snoozes
           if (data.state === 'GOOD') {
             snoozeUntilRef.current = 0;
+            if (snoozeTimeoutRef.current) {
+              clearTimeout(snoozeTimeoutRef.current);
+              snoozeTimeoutRef.current = null;
+            }
             return [];
           }
           
@@ -305,6 +312,10 @@ export default function TrackPosturePage() {
               const pts = data.postureTypes || [];
               
               snoozeUntilRef.current = 0; // Clear the snooze timer
+              if (snoozeTimeoutRef.current) {
+                clearTimeout(snoozeTimeoutRef.current);
+                snoozeTimeoutRef.current = null;
+              }
               
               return [{
                 id: ++toastIdRef.current,
@@ -459,9 +470,48 @@ export default function TrackPosturePage() {
     }
   };
 
+  const reopenSnoozedAlertIfEligible = () => {
+    if (snoozeUntilRef.current === 0 || Date.now() < snoozeUntilRef.current) return;
+    
+    const data = latestTelemetryRef.current;
+    if (!data) return;
+    
+    if (data.state === 'BAD_CONFIRMED') {
+      setToasts(prev => {
+        if (prev.length > 0) return prev; // already open
+        
+        snoozeUntilRef.current = 0;
+        if (snoozeTimeoutRef.current) {
+          clearTimeout(snoozeTimeoutRef.current);
+          snoozeTimeoutRef.current = null;
+        }
+        
+        const streak = data.badStreakSeconds || 0;
+        const mins = Math.floor(streak / 60);
+        const secs = Math.floor(streak % 60);
+        const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        const pts = data.postureTypes || [];
+        
+        return [{
+          id: ++toastIdRef.current,
+          durationStr: durationStr,
+          suggestion: data.suggestion || '',
+          postureTypes: pts,
+        }];
+      });
+    }
+  };
+
   const removeToast = (id: number) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-    snoozeUntilRef.current = Date.now() + 60000; // start fresh 60s snooze from this exact moment
+    
+    if (snoozeTimeoutRef.current) {
+      clearTimeout(snoozeTimeoutRef.current);
+    }
+    
+    const timeoutMs = 60000;
+    snoozeUntilRef.current = Date.now() + timeoutMs;
+    snoozeTimeoutRef.current = setTimeout(reopenSnoozedAlertIfEligible, timeoutMs);
   };
 
   // ─── Derived UI ───

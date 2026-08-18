@@ -29,10 +29,26 @@ export default function AppLayout() {
 
   // Application-level Heartbeat watchdog
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetch(`${VISION_SERVICE_URL}/heartbeat`, { method: 'POST' }).catch(() => { });
-    }, 2500);
+    const sendHeartbeat = () => {
+      fetch(`${VISION_SERVICE_URL}/heartbeat`, { method: 'POST', keepalive: true }).catch(() => { });
+    };
+    sendHeartbeat(); // Immediate on mount
+    const interval = setInterval(sendHeartbeat, 2500);
     return () => clearInterval(interval);
+  }, []);
+
+  // Immediate page-exit signal
+  useEffect(() => {
+    const handlePageHide = () => {
+      navigator.sendBeacon(`${VISION_SERVICE_URL}/tracking/stop`);
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    // iOS Safari fallback
+    window.addEventListener('unload', handlePageHide);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('unload', handlePageHide);
+    };
   }, []);
 
   return (

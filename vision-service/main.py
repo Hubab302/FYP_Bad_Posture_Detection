@@ -62,6 +62,28 @@ tracking_thread: threading.Thread | None = None
 ws_clients: list[WebSocket] = []
 latest_frame_jpeg: bytes | None = None
 
+# ─── Heartbeat Watchdog ───
+HEARTBEAT_TIMEOUT_SECONDS = 7.0
+last_heartbeat_time = time.time()
+
+@app.post("/heartbeat")
+async def heartbeat():
+    global last_heartbeat_time
+    last_heartbeat_time = time.time()
+    return {"status": "ok"}
+
+async def heartbeat_watchdog():
+    while True:
+        await asyncio.sleep(1.0)
+        if tracking_active:
+            if time.time() - last_heartbeat_time > HEARTBEAT_TIMEOUT_SECONDS:
+                logger.warning("Heartbeat timeout. Application disconnected. Performing cleanup...")
+                await stop_tracking()
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(heartbeat_watchdog())
+
 
 # ─── Request Models ───
 class StartRequest(BaseModel):
@@ -89,7 +111,7 @@ def status():
 
 @app.post("/tracking/start")
 async def start_tracking(req: StartRequest):
-    global tracking_active, tracking_thread
+    global tracking_active, tracking_thread, last_heartbeat_time
 
     with tracking_lock:
         already_active = tracking_active
@@ -97,6 +119,8 @@ async def start_tracking(req: StartRequest):
     if already_active:
         logger.warning("Tracking already active. Forcefully stopping previous session before starting new one.")
         await stop_tracking()
+
+    last_heartbeat_time = time.time()
 
     # Configure backend client
     backend.configure(req.backendEventUrl, req.trackingToken)
@@ -137,28 +161,38 @@ async def begin_monitoring():
 @app.post("/tracking/stop")
 async def stop_tracking():
     global tracking_active, latest_frame_jpeg
+    
+    t0 = time.time()
+    logger.info(f"PAGE_EXIT_RECEIVED            t={t0:.3f}")
 
     with tracking_lock:
         if not tracking_active:
             return {"status": "already_stopped", "stats": state_machine.get_stats()}
         tracking_active = False
 
+    logger.info(f"CAPTURE_LOOP_STOP_REQUESTED   t={time.time():.3f}")
+
     # Wait briefly for inference thread to exit
     if tracking_thread and tracking_thread.is_alive():
         tracking_thread.join(timeout=2.0)
 
     # Finalize stats
+    logger.info(f"MONITORING_FROZEN             t={time.time():.3f}")
     final_stats = state_machine.finalize()
+    logger.info(f"FINAL_SNAPSHOT_CAPTURED       t={time.time():.3f}")
 
-    # Send final checkpoint to backend
+    # Release camera immediately (BEFORE waiting for DB)
+    camera.release()
+    latest_frame_jpeg = None
+    logger.info(f"VIDEO_CAPTURE_RELEASED        t={time.time():.3f}")
+
+    # Send final checkpoint to backend (MongoDB)
+    logger.info(f"MONGODB_FINALIZE_STARTED      t={time.time():.3f}")
     try:
         await backend.send_checkpoint(final_stats)
     except Exception as e:
         logger.error(f"Final checkpoint failed: {e}")
-
-    # Release camera
-    camera.release()
-    latest_frame_jpeg = None
+    logger.info(f"MONGODB_FINALIZE_COMPLETE     t={time.time():.3f}")
 
     # Close backend session
     try:
@@ -181,7 +215,7 @@ async def stop_tracking():
         "cameraStatus": "off",
     })
 
-    logger.info("Tracking stopped")
+    logger.info(f"Tracking stopped total_time={(time.time() - t0):.3f}s")
     return {"status": "stopped", "stats": final_stats}
 
 

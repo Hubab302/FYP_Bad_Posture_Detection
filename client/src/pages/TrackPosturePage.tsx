@@ -123,7 +123,7 @@ export default function TrackPosturePage() {
   const [calibrationProgress, setCalibrationProgress] = useState(0);
 
   const [error, setError] = useState('');
-  const [toasts, setToasts] = useState<{ id: number; message: string; suggestion: string; postureType: string }[]>([]);
+  const [toasts, setToasts] = useState<{ id: number; durationStr: string; suggestion: string; postureTypes: string[] }[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const toastIdRef = useRef(0);
@@ -260,19 +260,21 @@ export default function TrackPosturePage() {
             return [];
           }
           
-          // Trigger new alert if exactly at 60s, 180s, etc. (alertTriggered flag from backend)
           if (data.alertTriggered) {
-            // Keep the previous ID if it exists to avoid completely unmounting the Toast (prevents flicker)
-            // Wait, actually the user wants ONE alert. We'll replace it completely.
+            const streak = data.badStreakSeconds || 0;
+            const mins = Math.floor(streak / 60);
+            const secs = Math.floor(streak % 60);
+            const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            const pts = data.postureTypes || [];
+            
             return [{
-              id: ++toastIdRef.current,
-              message: data.alertMessage || 'Bad posture detected',
-              suggestion: data.alertSuggestion || data.suggestion || '',
-              postureType: (data.alertPostureTypes || data.postureTypes || []).join(', '),
+              id: prevToasts.length > 0 ? prevToasts[0].id : ++toastIdRef.current,
+              durationStr: durationStr,
+              suggestion: data.suggestion || '',
+              postureTypes: pts,
             }];
           }
           
-          // If a toast is ALREADY open and the user is STILL in a continuous bad state, update the content live
           if (prevToasts.length > 0 && (data.state === 'BAD_PENDING' || data.state === 'BAD_CONFIRMED')) {
             const streak = data.badStreakSeconds || 0;
             const mins = Math.floor(streak / 60);
@@ -280,14 +282,11 @@ export default function TrackPosturePage() {
             const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
             const pts = data.postureTypes || [];
             
-            const typesStr = pts.length > 0 ? pts.join(' + ') : 'Bad Posture';
-            const newMessage = `${typesStr} detected for ${durationStr}`;
-            
             return [{
               ...prevToasts[0],
-              message: newMessage,
+              durationStr: durationStr,
               suggestion: data.suggestion || prevToasts[0].suggestion,
-              postureType: pts.join(', ') || prevToasts[0].postureType,
+              postureTypes: pts,
             }];
           }
           
@@ -762,18 +761,21 @@ export default function TrackPosturePage() {
               </div>
             </div>
           </div>
+          <div style={{ marginTop: '0.5rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Ergonomic guidance only; this application is not a medical diagnostic device.
+          </div>
         </div>
       </div>
 
-      {/* Toast Container */}
+      {/* Toast Notifications */}
       <div className="toast-container">
-        {toasts.map(t => (
+        {toasts.map(toast => (
           <Toast
-            key={t.id}
-            message={t.message}
-            suggestion={t.suggestion}
-            postureType={t.postureType}
-            onClose={() => removeToast(t.id)}
+            key={toast.id}
+            durationStr={toast.durationStr}
+            suggestion={toast.suggestion}
+            postureTypes={toast.postureTypes}
+            onClose={() => removeToast(toast.id)}
           />
         ))}
       </div>

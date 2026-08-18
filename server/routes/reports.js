@@ -2,38 +2,80 @@ const express = require('express');
 const { requireAuth } = require('../middleware/auth');
 const PostureReport = require('../models/PostureReport');
 const { aggregateWeeklyReport } = require('../services/aggregationService');
-const { isValidDateStr, daysBetween, getTodayLocal } = require('../utils/dateUtils');
+const {
+  isValidDateStr,
+  daysBetween,
+  getTodayLocal,
+  getRollingSevenDayWindow,
+  addDaysToDateStr,
+} = require('../utils/dateUtils');
 const PostureHistory = require('../models/PostureHistory');
 const logger = require('../utils/logger');
 
 const router = express.Router();
 
 // ─── Generate Weekly Report ───
+// Supports rolling 7-day windows via endDate OR legacy from/to.
+//
+// API Contract:
+//   POST /api/reports/weekly
+//   Body: { endDate: "2026-08-18" }
+//     → generates report for 2026-08-12 through 2026-08-18
+//
+//   POST /api/reports/weekly
+//   Body: { from: "2026-08-12", to: "2026-08-18" }
+//     → same result (backwards compatible)
+//
+// Response shape:
+//   { report: PostureReport }
+//   where PostureReport has:
+//     fromDate, toDate, generatedAt,
+//     totalMonitoringDurationSeconds, totalBadDurationSeconds, totalGoodDurationSeconds,
+//     badPosturePercentage, goodPosturePercentage, mostFrequentBadPosture
 router.post('/weekly', requireAuth, async (req, res, next) => {
   try {
     const userId = req.session.userId;
-    const { from, to } = req.body;
+    let from, to;
 
-    if (!from || !to) {
-      return res.status(400).json({ error: 'from and to dates are required.' });
-    }
+    // Support endDate parameter (preferred rolling-window API)
+    if (req.body.endDate) {
+      const endDate = req.body.endDate;
+      if (!isValidDateStr(endDate)) {
+        return res.status(400).json({ error: 'Invalid endDate format. Use YYYY-MM-DD.' });
+      }
 
-    if (!isValidDateStr(from) || !isValidDateStr(to)) {
-      return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
-    }
+      const today = getTodayLocal();
+      if (endDate > today) {
+        return res.status(400).json({ error: 'Cannot generate report for future dates.' });
+      }
 
-    const today = getTodayLocal();
-    if (to > today) {
-      return res.status(400).json({ error: 'Cannot generate report for future dates.' });
-    }
+      const window = getRollingSevenDayWindow(endDate);
+      from = window.startDate;
+      to = window.endDate;
+    } else if (req.body.from && req.body.to) {
+      // Legacy from/to parameters
+      from = req.body.from;
+      to = req.body.to;
 
-    if (from > to) {
-      return res.status(400).json({ error: 'from date must be before to date.' });
-    }
+      if (!isValidDateStr(from) || !isValidDateStr(to)) {
+        return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      }
 
-    const range = daysBetween(from, to);
-    if (range > 7) {
-      return res.status(400).json({ error: 'Report range must be at most 7 days.' });
+      const today = getTodayLocal();
+      if (to > today) {
+        return res.status(400).json({ error: 'Cannot generate report for future dates.' });
+      }
+
+      if (from > to) {
+        return res.status(400).json({ error: 'from date must be before to date.' });
+      }
+
+      const range = daysBetween(from, to);
+      if (range > 7) {
+        return res.status(400).json({ error: 'Report range must be at most 7 days.' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Either endDate or from+to are required.' });
     }
 
     // Check eligibility: user must have 7-day history span
@@ -45,16 +87,14 @@ router.post('/weekly', requireAuth, async (req, res, next) => {
       });
     }
 
-    const firstDate = new Date(first.localDate);
-    const eligibleDate = new Date(firstDate);
-    eligibleDate.setDate(eligibleDate.getDate() + 6);
-    const eligibleStr = eligibleDate.toISOString().slice(0, 10);
+    const eligibleDate = addDaysToDateStr(first.localDate, 6);
+    const today = getTodayLocal();
 
-    if (today < eligibleStr) {
+    if (today < eligibleDate) {
       return res.status(400).json({
         error: 'Not sufficient data to generate a weekly report. A weekly report becomes available after seven days of posture history.',
         eligible: false,
-        eligibleDate: eligibleStr,
+        eligibleDate: eligibleDate,
       });
     }
 
@@ -64,10 +104,10 @@ router.post('/weekly', requireAuth, async (req, res, next) => {
       });
     }
 
-    // Aggregate
+    // Aggregate using the shared aggregation service
     const stats = await aggregateWeeklyReport(userId, from, to);
 
-    // Upsert the report
+    // Upsert the report snapshot
     const report = await PostureReport.findOneAndUpdate(
       { userId, fromDate: from, toDate: to },
       {

@@ -92,6 +92,8 @@ class StartRequest(BaseModel):
     sessionId: str
     trackingToken: str
     backendEventUrl: str
+    forceCalibration: bool = False
+    autoStart: bool = False
 
 
 # ─── Endpoints ───
@@ -135,11 +137,18 @@ async def start_tracking(req: StartRequest):
     if not camera.open():
         return {"error": "Camera unavailable. Please check webcam permissions."}, 500
 
-    # Reset components for a fresh tracking period
-    calibration.start()
-    classifier.reset()
-    state_machine.__init__()
-    state_machine.state = "CALIBRATING"
+    if req.forceCalibration or not calibration.is_completed:
+        calibration.start()
+        classifier.reset()
+        state_machine.__init__()
+        state_machine.state = "CALIBRATING"
+    else:
+        classifier.reset()
+        state_machine.__init__()
+        if req.autoStart:
+            state_machine.start_monitoring()
+        else:
+            state_machine.state = "READY_TO_START"
 
     tracking_active = True
 

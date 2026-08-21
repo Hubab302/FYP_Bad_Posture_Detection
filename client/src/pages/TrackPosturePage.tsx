@@ -109,6 +109,7 @@ export default function TrackPosturePage() {
   console.log("TRACK_POSTURE_BUILD_CURRENT");
   // Authoritative UI state machine
   const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
+  const [isCalibrated, setIsCalibrated] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [cameraSessionKey, setCameraSessionKey] = useState<number>(Date.now());
 
@@ -145,6 +146,7 @@ export default function TrackPosturePage() {
           return;
         }
         const data = await res.json();
+        if (data.calibrated !== undefined) setIsCalibrated(data.calibrated);
         
         if (data.tracking) {
           if (data.state === 'READY_TO_START') {
@@ -250,17 +252,23 @@ export default function TrackPosturePage() {
         if (data.calibrationProgress !== undefined) {
           setCalibrationProgress(data.calibrationProgress);
         }
+        
+        if (data.calibrationStatus === 'completed') {
+          setIsCalibrated(true);
+        } else if (data.calibrationStatus === 'in_progress') {
+          setIsCalibrated(false);
+        }
 
         // Derive tracking state from telemetry
         setTrackingState(prev => {
-          if (data.state === 'STOPPED') return 'IDLE';
+          if (data.state === 'STOPPED') return data.calibrationStatus === 'completed' ? 'READY' : 'IDLE';
           if (data.state === 'CALIBRATING') {
             if (prev === 'STARTING_CAMERA' || prev === 'IDLE' || prev === 'ERROR') return 'CALIBRATING';
             return prev === 'TRACKING' || prev === 'RECALIBRATING' ? 'RECALIBRATING' : prev;
           }
           if (data.state === 'READY_TO_START' && prev !== 'TRACKING') return 'READY';
           if (['GOOD', 'BAD_PENDING', 'BAD_CONFIRMED', 'UNOBSERVED'].includes(data.state)) {
-            if (prev === 'READY' || prev === 'TRACKING') return 'TRACKING';
+            if (prev === 'READY' || prev === 'TRACKING' || prev === 'STARTING_CAMERA') return 'TRACKING';
           }
           return prev;
         });
@@ -367,7 +375,7 @@ export default function TrackPosturePage() {
   const isCameraActive = ['STARTING_CAMERA', 'CALIBRATING', 'READY', 'TRACKING', 'RECALIBRATING'].includes(trackingState);
 
   // ─── Actions ───
-  const calibrateBaseline = async () => {
+  const calibrateBaseline = async (force: boolean = false) => {
     setError('');
     try {
       // Create a new session each time calibration is started
@@ -383,6 +391,7 @@ export default function TrackPosturePage() {
             sessionId: session.sessionId,
             trackingToken: session.trackingToken,
             backendEventUrl: session.backendEventUrl,
+            forceCalibration: force,
           }),
         }).then(res => {
           if (!res.ok) {
@@ -407,11 +416,39 @@ export default function TrackPosturePage() {
   const startTracking = async () => {
     setError('');
     try {
-      await fetch(`${VISION_SERVICE_URL}/tracking/begin_monitoring`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      setTrackingState('TRACKING');
+      if (trackingState === 'IDLE' || trackingState === 'READY' && !wsRef.current) {
+        // Camera is closed, start a new backend tracking context but reuse baseline
+        const session = await trackingApi.createSession();
+        setSessionId(session.sessionId);
+        setCameraSessionKey(Date.now());
+
+        connectWebSocket(() => {
+          fetch(`${VISION_SERVICE_URL}/tracking/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: session.sessionId,
+              trackingToken: session.trackingToken,
+              backendEventUrl: session.backendEventUrl,
+              forceCalibration: false,
+              autoStart: true,
+            }),
+          }).then(res => {
+            if (!res.ok) {
+              setError('Failed to start camera.');
+              setTrackingState('ERROR');
+            }
+          });
+        });
+        setTrackingState('STARTING_CAMERA');
+      } else {
+        // Camera is already running (e.g. just calibrated)
+        await fetch(`${VISION_SERVICE_URL}/tracking/begin_monitoring`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        setTrackingState('TRACKING');
+      }
     } catch (err) {
       console.error('Start error:', err);
       setError('Failed to start monitoring.');
@@ -682,26 +719,26 @@ export default function TrackPosturePage() {
               {(trackingState === 'IDLE' || trackingState === 'ERROR') && (
                 <button
                   className="btn btn-secondary track-btn"
-                  onClick={calibrateBaseline}
+                  onClick={() => calibrateBaseline(true)}
                   style={{ minWidth: '160px' }}
                 >
-                  Calibrate Baseline
+                  {isCalibrated ? 'Recalibrate Baseline' : 'Calibrate Baseline'}
                 </button>
               )}
-              {(trackingState === 'CALIBRATING' || trackingState === 'RECALIBRATING') && (
+              {(trackingState === 'CALIBRATING' || trackingState === 'RECALIBRATING' || trackingState === 'STARTING_CAMERA') && (
                 <button
                   className="btn btn-secondary track-btn"
                   disabled
-                  style={{ minWidth: '160px' }}
+                  style={{ minWidth: '160px', opacity: 0.6, cursor: 'not-allowed' }}
                 >
                   <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                  Calibrating...
+                  {trackingState === 'STARTING_CAMERA' ? (isCalibrated ? 'Recalibrate Baseline' : 'Calibrate Baseline') : 'Calibrating...'}
                 </button>
               )}
               {trackingState === 'READY' && (
                 <button
                   className="btn btn-secondary track-btn"
-                  onClick={calibrateBaseline}
+                  onClick={() => calibrateBaseline(true)}
                   style={{ minWidth: '160px' }}
                 >
                   Recalibrate Baseline
@@ -719,9 +756,25 @@ export default function TrackPosturePage() {
               )}
 
               {/* Start/Stop Button */}
-              {(trackingState === 'IDLE' || trackingState === 'ERROR' || trackingState === 'CALIBRATING' || trackingState === 'RECALIBRATING') && (
+              {(trackingState === 'IDLE' || trackingState === 'ERROR') && (
+                <button 
+                  className="btn btn-primary track-btn" 
+                  disabled={!isCalibrated}
+                  onClick={startTracking}
+                  style={{ minWidth: '160px' }}
+                >
+                  Start Tracking
+                </button>
+              )}
+              {(trackingState === 'CALIBRATING' || trackingState === 'RECALIBRATING') && (
                 <button className="btn btn-primary track-btn" disabled style={{ minWidth: '160px' }}>
                   Start Tracking
+                </button>
+              )}
+              {trackingState === 'STARTING_CAMERA' && (
+                <button className="btn btn-primary track-btn" disabled style={{ minWidth: '160px' }}>
+                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', marginRight: '8px' }} />
+                  Starting...
                 </button>
               )}
               {trackingState === 'READY' && (

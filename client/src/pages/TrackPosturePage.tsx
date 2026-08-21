@@ -120,7 +120,8 @@ export default function TrackPosturePage() {
   const [postureTypes, setPostureTypes] = useState<string[]>([]);
   const [liveSuggestion, setLiveSuggestion] = useState('');
   const [badStreakSeconds, setBadStreakSeconds] = useState(0);
-  const [sessionElapsedSeconds, setSessionElapsedSeconds] = useState(0);
+  const [currentSessionGoodSeconds, setCurrentSessionGoodSeconds] = useState(0);
+  const [currentSessionBadSeconds, setCurrentSessionBadSeconds] = useState(0);
   const [calibrationProgress, setCalibrationProgress] = useState(0);
 
   const [error, setError] = useState('');
@@ -153,6 +154,12 @@ export default function TrackPosturePage() {
           } else {
             setTrackingState('TRACKING');
           }
+          // Restore authoritative active-session snapshot
+          if (data.goodSeconds !== undefined) setCurrentSessionGoodSeconds(data.goodSeconds);
+          if (data.badSeconds !== undefined) setCurrentSessionBadSeconds(data.badSeconds);
+          if (data.badStreakSeconds !== undefined) setBadStreakSeconds(data.badStreakSeconds);
+          if (data.state) setPostureState(data.state);
+          
           // Force a fresh preview connection when returning
           setCameraSessionKey(Date.now());
           connectWebSocket();
@@ -238,7 +245,8 @@ export default function TrackPosturePage() {
         setPostureTypes(data.postureTypes || []);
         setLiveSuggestion(data.suggestion || '');
         setBadStreakSeconds(data.badStreakSeconds || 0);
-        setSessionElapsedSeconds(data.sessionElapsedSeconds || 0);
+        setCurrentSessionGoodSeconds(data.goodSeconds || 0);
+        setCurrentSessionBadSeconds(data.badSeconds || 0);
         if (data.calibrationProgress !== undefined) {
           setCalibrationProgress(data.calibrationProgress);
         }
@@ -351,7 +359,8 @@ export default function TrackPosturePage() {
   }, []);
 
   // ─── Computed Values ───
-  const totalMonitoringDuration = dailyBaseMonitoring + sessionElapsedSeconds;
+  const liveValidMonitoring = currentSessionGoodSeconds + currentSessionBadSeconds;
+  const totalMonitoringDuration = dailyBaseMonitoring + liveValidMonitoring;
   const liveBadDuration = badStreakSeconds;
 
   // Camera should be active during calibration, ready, tracking, and recalibration
@@ -388,7 +397,8 @@ export default function TrackPosturePage() {
       setTrackingState('STARTING_CAMERA');
       setCalibrationProgress(0);
       setBadStreakSeconds(0);
-      setSessionElapsedSeconds(0);
+      setCurrentSessionGoodSeconds(0);
+      setCurrentSessionBadSeconds(0);
     } catch (err: any) {
       setError('Failed to create tracking session. Is the backend running?');
     }
@@ -440,14 +450,18 @@ export default function TrackPosturePage() {
         }
       }
 
-      // Update daily base with the newly completed period
-      const periodGood = data.stats?.goodDurationSeconds || 0;
-      const periodBad = data.stats?.badDurationSeconds || 0;
-      setDailyBaseMonitoring(prev => prev + periodGood + periodBad);
+        // Refresh the daily base directly from the server to guarantee consistency
+        try {
+          const totals = await trackingApi.getDailyTotals();
+          setDailyBaseMonitoring(totals.dailyMonitoringSeconds);
+        } catch (err) {
+          console.error('Failed to refresh totals after stop:', err);
+        }
 
       // Reset live values
       setBadStreakSeconds(0);
-      setSessionElapsedSeconds(0);
+      setCurrentSessionGoodSeconds(0);
+      setCurrentSessionBadSeconds(0);
       setPostureState('');
       setPostureTypes([]);
       setLiveSuggestion('');

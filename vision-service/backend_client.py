@@ -53,6 +53,9 @@ class BackendClient:
     async def send_checkpoint(self, session_stats: dict):
         await self.send_event("checkpoint", {"sessionStats": session_stats})
 
+    async def send_stop(self, session_stats: dict):
+        await self.send_event("stop", {"sessionStats": session_stats})
+
     async def send_alert(self, alert_data: dict):
         await self.send_event("alert", alert_data)
 

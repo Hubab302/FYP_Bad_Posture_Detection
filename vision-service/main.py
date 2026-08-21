@@ -102,12 +102,16 @@ def health():
 
 @app.get("/status")
 def status():
+    stats = state_machine.get_stats()
     return {
         "tracking": tracking_active,
         "camera": camera.is_open,
         "model": MODEL_COMPLEXITY,
         "calibrated": calibration.is_completed,
         "state": state_machine.state,
+        "goodSeconds": round(stats["goodDurationSeconds"], 1),
+        "badSeconds": round(stats["badDurationSeconds"], 1),
+        "badStreakSeconds": round(state_machine.bad_streak_duration, 1),
     }
 
 
@@ -193,12 +197,12 @@ async def stop_tracking(debugReason: str = "MISSING", request: Request = None):
     latest_frame_jpeg = None
     logger.info(f"VIDEO_CAPTURE_RELEASED        t={time.time():.3f}")
 
-    # Send final checkpoint to backend (MongoDB)
+    # Send final stop event to backend (MongoDB) to complete session
     logger.info(f"MONGODB_FINALIZE_STARTED      t={time.time():.3f}")
     try:
-        await backend.send_checkpoint(final_stats)
+        await backend.send_stop(final_stats)
     except Exception as e:
-        logger.error(f"Final checkpoint failed: {e}")
+        logger.error(f"Final stop failed: {e}")
     logger.info(f"MONGODB_FINALIZE_COMPLETE     t={time.time():.3f}")
 
     # Close backend session

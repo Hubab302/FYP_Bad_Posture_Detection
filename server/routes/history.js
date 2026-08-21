@@ -25,25 +25,9 @@ router.get('/range', requireAuth, async (req, res, next) => {
 
     const firstHistory = await PostureHistory.findOne({ userId }).sort({ localDate: 1 });
     const lastHistory = await PostureHistory.findOne({ userId }).sort({ localDate: -1 });
-    const firstSession = await PostureSession.findOne({ userId }).sort({ startedAt: 1 });
-    const lastSession = await PostureSession.findOne({ userId }).sort({ startedAt: -1 });
 
     let firstDataDate = firstHistory ? firstHistory.localDate : null;
     let lastDataDate = lastHistory ? lastHistory.localDate : null;
-
-    if (firstSession) {
-      const firstSessionDate = toLocalDateStr(firstSession.startedAt);
-      if (!firstDataDate || firstSessionDate < firstDataDate) {
-        firstDataDate = firstSessionDate;
-      }
-    }
-    
-    if (lastSession) {
-      const lastSessionDate = toLocalDateStr(lastSession.startedAt);
-      if (!lastDataDate || lastSessionDate > lastDataDate) {
-        lastDataDate = lastSessionDate;
-      }
-    }
 
     if (!firstDataDate || !lastDataDate) {
       return res.json({
@@ -136,22 +120,6 @@ router.get('/', requireAuth, async (req, res, next) => {
       localDate: { $gte: from, $lte: to },
     }).sort({ localDate: 1 });
 
-    // Check for active sessions (live tracking data not yet persisted)
-    const activeSessions = await PostureSession.find({
-      userId,
-      status: 'active'
-    });
-
-    const { getSessionDailyDeltas } = require('../services/aggregationService');
-    const activeDeltasByDate = {};
-    for (const s of activeSessions) {
-      const deltas = await getSessionDailyDeltas(s);
-      for (const [date, delta] of Object.entries(deltas)) {
-        if (!activeDeltasByDate[date]) activeDeltasByDate[date] = [];
-        activeDeltasByDate[date].push(delta);
-      }
-    }
-
     // Build a complete response covering every calendar day in range
     const allDates = getLocalDatesInRange(from, to);
     const result = [];
@@ -178,33 +146,6 @@ router.get('/', requireAuth, async (req, res, next) => {
         if (recordObj.postureTypeDurations instanceof Map) {
           recordObj.postureTypeDurations = Object.fromEntries(recordObj.postureTypeDurations);
         }
-      }
-
-      // Add active session data dynamically for live sessions on this date
-      const deltasForDate = activeDeltasByDate[dateStr] || [];
-      
-      if (deltasForDate.length > 0) {
-        let typeDurations = existing?.postureTypeDurations instanceof Map 
-            ? Object.fromEntries(existing.postureTypeDurations) 
-            : (recordObj.postureTypeDurations || {});
-
-        for (const delta of deltasForDate) {
-           recordObj.goodDurationSeconds += delta.good || 0;
-           recordObj.badDurationSeconds += delta.bad || 0;
-           recordObj.monitoringDurationSeconds = recordObj.goodDurationSeconds + recordObj.badDurationSeconds;
-           
-           for (const [type, dur] of Object.entries(delta.types || {})) {
-              typeDurations[type] = (typeDurations[type] || 0) + dur;
-           }
-        }
-        
-        const stats = calculateStats(recordObj.goodDurationSeconds, recordObj.badDurationSeconds, typeDurations);
-        recordObj.badPosturePercentage = stats.badPosturePercentage;
-        recordObj.goodPosturePercentage = stats.goodPosturePercentage;
-        recordObj.mostFrequentBadPosture = stats.mostFrequentBadPosture;
-        recordObj.hasData = recordObj.monitoringDurationSeconds > 0;
-        recordObj.postureTypes = Object.keys(typeDurations).filter((k) => typeDurations[k] > 0);
-        recordObj.postureTypeDurations = typeDurations;
       }
 
       result.push(recordObj);

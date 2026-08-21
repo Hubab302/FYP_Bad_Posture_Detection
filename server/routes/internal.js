@@ -4,6 +4,7 @@ const PostureSession = require('../models/PostureSession');
 const PostureSegment = require('../models/PostureSegment');
 const Alert = require('../models/Alert');
 const logger = require('../utils/logger');
+const { distributeSessionToDailyAggregates } = require('../services/aggregationService');
 
 const router = express.Router();
 
@@ -113,6 +114,45 @@ router.post('/tracking/:sessionId/event', async (req, res, next) => {
         session.alertCount = (session.alertCount || 0) + 1;
         await session.save();
         logger.info(`Alert #${session.alertCount} for session ${sessionId}`);
+        break;
+      }
+
+      case 'stop': {
+        if (data.sessionStats) {
+          const incomingMonitoring = (data.sessionStats.goodDurationSeconds || 0) + (data.sessionStats.badDurationSeconds || 0);
+          if (incomingMonitoring >= (session.monitoringDurationSeconds || 0)) {
+            session.goodDurationSeconds = data.sessionStats.goodDurationSeconds || 0;
+            session.badDurationSeconds = data.sessionStats.badDurationSeconds || 0;
+            session.unobservedDurationSeconds = data.sessionStats.unobservedDurationSeconds || 0;
+            session.monitoringDurationSeconds = incomingMonitoring;
+            if (data.sessionStats.postureTypeDurations) {
+              session.postureTypeDurations = data.sessionStats.postureTypeDurations;
+            }
+            if (data.sessionStats.alertCount !== undefined) {
+              session.alertCount = data.sessionStats.alertCount;
+            }
+          }
+        }
+        
+        session.status = 'completed';
+        session.endedAt = new Date();
+        session.monitoringDurationSeconds = session.goodDurationSeconds + session.badDurationSeconds;
+
+        if (session.postureTypeDurations && session.postureTypeDurations.size > 0) {
+          let maxType = null;
+          let maxDur = 0;
+          for (const [type, dur] of session.postureTypeDurations) {
+            if (dur > maxDur) {
+              maxDur = dur;
+              maxType = type;
+            }
+          }
+          session.dominantBadPosture = maxType;
+        }
+
+        await session.save();
+        await distributeSessionToDailyAggregates(session);
+        logger.info(`Session ${sessionId} completed via backend event`);
         break;
       }
 

@@ -64,6 +64,7 @@ router.get('/sessions/daily-totals', requireAuth, async (req, res, next) => {
     let activeSessionId = null;
 
     // Dynamically include any currently active sessions that haven't been flushed yet
+    // just to recover the active session ID, without adding their durations to the daily base
     const activeSessions = await PostureSession.find({
       userId,
       status: 'active'
@@ -71,16 +72,6 @@ router.get('/sessions/daily-totals', requireAuth, async (req, res, next) => {
     
     for (const s of activeSessions) {
       activeSessionId = s._id; // Keep the active session ID to recover it on frontend remount
-      if (toLocalDateStr(s.startedAt) === today) {
-        totalGood += s.goodDurationSeconds || 0;
-        totalBad += s.badDurationSeconds || 0;
-      } else {
-        const deltas = await getSessionDailyDeltas(s);
-        if (deltas[today]) {
-          totalGood += deltas[today].good || 0;
-          totalBad += deltas[today].bad || 0;
-        }
-      }
     }
 
     res.json({

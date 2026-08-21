@@ -39,6 +39,7 @@ interface TelemetryData {
 // ─── Constants ───
 const VISION_SERVICE_URL = 'http://localhost:8000';
 const WS_URL = 'ws://localhost:8000/ws/telemetry';
+const USE_NATIVE_GLOBAL_POSTURE_ALERT = true;
 
 // ─── Suggestion Mapping ───
 function getSuggestionForState(
@@ -183,7 +184,15 @@ export default function TrackPosturePage() {
 
   // ─── Visibility change for notifications & cancellation ───
   useEffect(() => {
-    const handleVisibility = () => {
+    const handleVisibility = (e: Event) => {
+      if (e.type === 'visibilitychange') {
+        console.log(`[LIFECYCLE_TRACE] visibilitychange hidden=${document.hidden}`);
+      } else if (e.type === 'blur') {
+        console.log(`[LIFECYCLE_TRACE] window blur`);
+      } else if (e.type === 'focus') {
+        console.log(`[LIFECYCLE_TRACE] window focus`);
+      }
+      
       const isVisible = document.visibilityState === 'visible';
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -191,15 +200,6 @@ export default function TrackPosturePage() {
           visible: isVisible,
           focused: document.hasFocus(),
         }));
-      }
-
-      // If active calibration is hidden, cancel it immediately.
-      if (!isVisible) {
-        const state = trackingStateRef.current;
-        if (state === 'CALIBRATING' || state === 'RECALIBRATING' || state === 'STARTING_CAMERA') {
-          // Force stop calibration, discard partial samples, return to IDLE
-          stopTracking();
-        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -341,13 +341,9 @@ export default function TrackPosturePage() {
   // ─── Cleanup on unmount (Navigation Cancellation) ───
   useEffect(() => {
     return () => {
-      // If user leaves the Track route while actively calibrating, cancel attempt
-      const state = trackingStateRef.current;
-      if (state === 'CALIBRATING' || state === 'RECALIBRATING' || state === 'STARTING_CAMERA') {
-        fetch(`${VISION_SERVICE_URL}/tracking/stop`, { method: 'POST', keepalive: true }).catch(() => {});
-      }
-
+      console.log("[LIFECYCLE_TRACE] TrackPosturePage unmount");
       if (wsRef.current) {
+        console.log("[LIFECYCLE_TRACE] websocket close");
         wsRef.current.close();
         wsRef.current = null;
       }
@@ -425,8 +421,9 @@ export default function TrackPosturePage() {
     setTrackingState('STOPPING');
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`${VISION_SERVICE_URL}/tracking/stop`, { 
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+      
+      const res = await fetch(`${VISION_SERVICE_URL}/tracking/stop?debugReason=EXPLICIT_STOP_BUTTON`, { 
         method: 'POST',
         signal: controller.signal
       });
@@ -845,15 +842,19 @@ export default function TrackPosturePage() {
 
       {/* Toast Notifications */}
       <div className="toast-container">
-        {toasts.map(toast => (
-          <Toast
-            key={toast.id}
-            durationStr={toast.durationStr}
-            suggestion={toast.suggestion}
-            postureTypes={toast.postureTypes}
-            onClose={() => removeToast(toast.id)}
-          />
-        ))}
+        {!USE_NATIVE_GLOBAL_POSTURE_ALERT && (
+          <>
+            {toasts.map(toast => (
+              <Toast
+                key={toast.id}
+                durationStr={toast.durationStr}
+                suggestion={toast.suggestion}
+                postureTypes={toast.postureTypes}
+                onClose={() => removeToast(toast.id)}
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

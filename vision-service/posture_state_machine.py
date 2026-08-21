@@ -210,6 +210,7 @@ class PostureStateMachine:
 
     def on_calibration_timeout(self):
         """Transition from CALIBRATING to IDLE on timeout."""
+        logger.info(f"[TRACK_STATE_TRACE] source=on_calibration_timeout before={self.state} after=IDLE")
         self.state = "IDLE"
         self._auto_resume = False
         logger.info("State: CALIBRATING -> IDLE (timeout)")

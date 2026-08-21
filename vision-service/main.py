@@ -9,7 +9,7 @@ import time
 import threading
 import cv2
 import numpy as np
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -28,6 +28,8 @@ from posture_state_machine import PostureStateMachine
 from notification_manager import NotificationManager
 from recommendation_engine import get_recommendation
 from backend_client import BackendClient
+
+from global_alert_bridge import publish as publish_global_alert
 
 # ─── Logging ───
 logging.basicConfig(
@@ -76,9 +78,9 @@ async def heartbeat_watchdog():
     while True:
         await asyncio.sleep(1.0)
         if tracking_active:
-            if time.time() - last_heartbeat_time > HEARTBEAT_TIMEOUT_SECONDS:
-                logger.warning("Heartbeat timeout. Application disconnected. Performing cleanup...")
-                await stop_tracking()
+            elapsed = time.time() - last_heartbeat_time
+            if elapsed > HEARTBEAT_TIMEOUT_SECONDS:
+                logger.debug(f"Frontend heartbeat stale for {elapsed:.1f}s; tracking continues in background")
 
 @app.on_event("startup")
 async def startup_event():
@@ -159,10 +161,15 @@ async def begin_monitoring():
 
 
 @app.post("/tracking/stop")
-async def stop_tracking():
+async def stop_tracking(debugReason: str = "MISSING", request: Request = None):
     global tracking_active, latest_frame_jpeg
     
     t0 = time.time()
+    
+    # Instrumentation
+    client_info = request.client.host if request and request.client else "unknown"
+    logger.info(f"[STOP_TRACE] timestamp={t0:.3f} reason={debugReason} tracking_state_before={state_machine.state} request_client={client_info}")
+    
     logger.info(f"PAGE_EXIT_RECEIVED            t={t0:.3f}")
 
     with tracking_lock:
@@ -214,6 +221,8 @@ async def stop_tracking():
         "calibrationStatus": "stopped",
         "cameraStatus": "off",
     })
+
+    publish_global_alert({"type": "tracking_stopped"})
 
     logger.info(f"Tracking stopped total_time={(time.time() - t0):.3f}s")
     return {"status": "stopped", "stats": final_stats}
@@ -337,6 +346,7 @@ def _inference_loop():
         pose_model.initialize()
     except Exception as e:
         logger.error(f"Pose model init failed in inference thread: {e}")
+        logger.info(f"[TRACK_STATE_TRACE] source=pose_init_failed before={state_machine.state} after=STOPPED")
         tracking_active = False
         return
 
@@ -504,6 +514,8 @@ def _inference_loop():
             telemetry["alertMessage"] = alert["message"]
             telemetry["alertSuggestion"] = alert["suggestion"]
             telemetry["alertPostureTypes"] = alert["postureTypes"]
+
+        publish_global_alert(dict(telemetry))
 
         _send_telemetry_sync(loop, telemetry)
 

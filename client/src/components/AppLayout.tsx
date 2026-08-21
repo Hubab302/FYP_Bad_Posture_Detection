@@ -39,15 +39,14 @@ export default function AppLayout() {
 
   // Immediate page-exit signal
   useEffect(() => {
-    const handlePageHide = () => {
-      navigator.sendBeacon(`${VISION_SERVICE_URL}/tracking/stop`);
+    const handlePageExit = () => {
+      console.log("[LIFECYCLE_TRACE] beforeunload");
+      navigator.sendBeacon(`${VISION_SERVICE_URL}/tracking/stop?debugReason=PAGE_EXIT_BEACON`);
     };
-    window.addEventListener('pagehide', handlePageHide);
-    // iOS Safari fallback
-    window.addEventListener('unload', handlePageHide);
+    window.addEventListener('beforeunload', handlePageExit);
     return () => {
-      window.removeEventListener('pagehide', handlePageHide);
-      window.removeEventListener('unload', handlePageHide);
+      console.log("[LIFECYCLE_TRACE] AppLayout unmount");
+      window.removeEventListener('beforeunload', handlePageExit);
     };
   }, []);
 

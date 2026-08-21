@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import LogoutModal from './LogoutModal';
+import TrackPosturePage from '../pages/TrackPosturePage';
 import { LayoutDashboard, Camera, History, FileText, LogOut, Activity } from 'lucide-react';
 
 const VISION_SERVICE_URL = 'http://localhost:8000';
@@ -9,6 +10,7 @@ const VISION_SERVICE_URL = 'http://localhost:8000';
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showLogout, setShowLogout] = useState(false);
 
   const handleLogout = async () => {
@@ -84,8 +86,15 @@ export default function AppLayout() {
         </div>
       </aside>
 
-      <main className="main-content">
-        <Outlet />
+      <main className="main-content" style={{ position: 'relative', overflow: 'hidden' }}>
+        <div style={{ 
+          display: location.pathname === '/track' ? 'block' : 'none', 
+          height: '100%', 
+          width: '100%' 
+        }}>
+          <TrackPosturePage />
+        </div>
+        {location.pathname !== '/track' && <Outlet />}
       </main>
 
       {showLogout && (

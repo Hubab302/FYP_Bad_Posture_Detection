@@ -12,6 +12,7 @@ Timer concepts:
 """
 import time
 import logging
+import threading
 import config
 from recommendation_engine import get_recommendation, get_alert_message
 
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 class PostureStateMachine:
     def __init__(self):
+        self._lock = threading.Lock()
+        self._stop_cutoff: float | None = None
+        
         self.state = "CALIBRATING"
         self._bad_streak_start: float | None = None
         self._last_alert_time: float | None = None
@@ -56,19 +60,23 @@ class PostureStateMachine:
 
     def transition(self, classifier_state: str, posture_types: list[str], confidence: float) -> dict | None:
         """Process a new classification result. Returns alert dict if triggered."""
-        if self.state not in ("GOOD", "BAD_PENDING", "BAD_CONFIRMED", "UNOBSERVED"):
+        with self._lock:
+            if self._stop_cutoff is not None:
+                return None  # Stop was requested; ignore late inference results
+                
+            if self.state not in ("GOOD", "BAD_PENDING", "BAD_CONFIRMED", "UNOBSERVED"):
+                return None
+
+            now = time.time()
+            segment_duration = now - self._segment_start
+
+            if classifier_state == "UNOBSERVED":
+                return self._handle_unobserved(now, segment_duration)
+            if classifier_state == "GOOD":
+                return self._handle_good(now, segment_duration)
+            if classifier_state == "BAD":
+                return self._handle_bad(now, segment_duration, posture_types)
             return None
-
-        now = time.time()
-        segment_duration = now - self._segment_start
-
-        if classifier_state == "UNOBSERVED":
-            return self._handle_unobserved(now, segment_duration)
-        if classifier_state == "GOOD":
-            return self._handle_good(now, segment_duration)
-        if classifier_state == "BAD":
-            return self._handle_bad(now, segment_duration, posture_types)
-        return None
 
     def _close_segment(self, now: float, segment_duration: float):
         """Close current segment and account duration."""
@@ -153,45 +161,73 @@ class PostureStateMachine:
 
     def get_stats(self, cutoff: float | None = None) -> dict:
         """Get current tracking period statistics (includes ongoing segment)."""
-        now = cutoff if cutoff is not None else time.time()
-        ongoing = max(0, now - self._segment_start)
+        with self._lock:
+            now = cutoff if cutoff is not None else time.time()
+            if self._stop_cutoff is not None and now > self._stop_cutoff:
+                now = self._stop_cutoff
+                
+            ongoing = max(0, now - self._segment_start)
 
-        good = self._good_seconds
-        bad = self._bad_seconds
-        unobs = self._unobserved_seconds
+            good = self._good_seconds
+            bad = self._bad_seconds
+            unobs = self._unobserved_seconds
 
-        if self.state == "GOOD":
-            good += ongoing
-        elif self.state in ("BAD_PENDING", "BAD_CONFIRMED"):
-            bad += ongoing
-        elif self.state == "UNOBSERVED":
-            unobs += ongoing
+            if self.state == "GOOD":
+                good += ongoing
+            elif self.state in ("BAD_PENDING", "BAD_CONFIRMED"):
+                bad += ongoing
+            elif self.state == "UNOBSERVED":
+                unobs += ongoing
 
-        return {
-            "goodDurationSeconds": round(good, 1),
-            "badDurationSeconds": round(bad, 1),
-            "unobservedDurationSeconds": round(unobs, 1),
-            "postureTypeDurations": {k: round(v, 1) for k, v in self._posture_type_durations.items()},
-            "alertCount": self._alert_count,
-        }
+            return {
+                "goodDurationSeconds": round(good, 1),
+                "badDurationSeconds": round(bad, 1),
+                "unobservedDurationSeconds": round(unobs, 1),
+                "postureTypeDurations": {k: round(v, 1) for k, v in self._posture_type_durations.items()},
+                "alertCount": self._alert_count,
+            }
+
+    def request_stop(self, cutoff: float):
+        """Authoritatively freeze the timeline at a specific cutoff, blocking future mutations."""
+        with self._lock:
+            if self._stop_cutoff is None:
+                self._stop_cutoff = cutoff
 
     def finalize(self, cutoff: float | None = None) -> dict:
         """Close last segment, stop monitoring clock, return final stats."""
-        now = cutoff if cutoff is not None else time.time()
-        final_stats = self.get_stats(cutoff=now)
-        
-        segment_duration = max(0, now - self._segment_start)
-        if self.state in ("GOOD", "BAD_PENDING", "BAD_CONFIRMED", "UNOBSERVED"):
-            self._close_segment(now, segment_duration)
+        # Note: final_stats uses get_stats which handles its own lock.
+        # But we want the entire finalize operation to be atomic.
+        with self._lock:
+            now = cutoff if cutoff is not None else time.time()
+            if self._stop_cutoff is not None and now > self._stop_cutoff:
+                now = self._stop_cutoff
 
-        # Stop monitoring clock
-        if not self._monitoring_paused and self._monitoring_start is not None:
-            self._monitoring_accumulated += max(0, now - self._monitoring_start)
-            self._monitoring_paused = True
+            # Compute stats before closing segment to preserve ongoing math correctly
+            ongoing = max(0, now - self._segment_start)
+            good = self._good_seconds + (ongoing if self.state == "GOOD" else 0)
+            bad = self._bad_seconds + (ongoing if self.state in ("BAD_PENDING", "BAD_CONFIRMED") else 0)
+            unobs = self._unobserved_seconds + (ongoing if self.state == "UNOBSERVED" else 0)
+            
+            final_stats = {
+                "goodDurationSeconds": round(good, 1),
+                "badDurationSeconds": round(bad, 1),
+                "unobservedDurationSeconds": round(unobs, 1),
+                "postureTypeDurations": {k: round(v, 1) for k, v in self._posture_type_durations.items()},
+                "alertCount": self._alert_count,
+            }
+            
+            segment_duration = max(0, now - self._segment_start)
+            if self.state in ("GOOD", "BAD_PENDING", "BAD_CONFIRMED", "UNOBSERVED"):
+                self._close_segment(now, segment_duration)
 
-        self.state = "STOPPED"
-        self._bad_streak_start = None
-        return final_stats
+            # Stop monitoring clock
+            if not self._monitoring_paused and self._monitoring_start is not None:
+                self._monitoring_accumulated += max(0, now - self._monitoring_start)
+                self._monitoring_paused = True
+
+            self.state = "STOPPED"
+            self._bad_streak_start = None
+            return final_stats
 
     def on_calibration_complete(self):
         """Transition from CALIBRATING to READY_TO_START or resume TRACKING."""
@@ -217,8 +253,9 @@ class PostureStateMachine:
 
     def reset_for_recalibration(self):
         """Recalibrate without losing accumulated stats. Pauses monitoring clock."""
-        now = time.time()
-        segment_duration = now - self._segment_start
+        with self._lock:
+            now = time.time()
+            segment_duration = now - self._segment_start
         if self.state in ("GOOD", "BAD_PENDING", "BAD_CONFIRMED", "UNOBSERVED"):
             self._close_segment(now, segment_duration)
 
@@ -235,11 +272,13 @@ class PostureStateMachine:
 
     def start_monitoring(self, previous_daily_monitoring: float = 0.0):
         """Start tracking from READY_TO_START. Previous daily monitoring is for display only."""
-        now = time.time()
-        self.state = "GOOD"
-        self._segment_start = now
-        self._monitoring_start = now
-        self._monitoring_paused = False
-        self._monitoring_accumulated = 0.0
-        self._bad_streak_start = None
-        logger.info(f"State: READY_TO_START -> GOOD (monitoring started)")
+        with self._lock:
+            now = time.time()
+            self._stop_cutoff = None
+            self.state = "GOOD"
+            self._segment_start = now
+            self._monitoring_start = now
+            self._monitoring_paused = False
+            self._monitoring_accumulated = 0.0
+            self._bad_streak_start = None
+            logger.info(f"State: READY_TO_START -> GOOD (monitoring started)")

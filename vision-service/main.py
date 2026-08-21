@@ -178,6 +178,7 @@ async def stop_tracking(debugReason: str = "MISSING", request: Request = None):
     global tracking_active, latest_frame_jpeg
     
     t0 = time.time()
+    state_machine.request_stop(cutoff=t0)
     
     # Instrumentation
     client_info = request.client.host if request and request.client else "unknown"

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/AppLayout';
+import { TrackingProvider } from './contexts/TrackingContext';
 import SignupPage from './pages/SignupPage';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -24,12 +25,14 @@ export default function App() {
           <Route
             element={
               <ProtectedRoute>
-                <AppLayout />
+                <TrackingProvider>
+                  <AppLayout />
+                </TrackingProvider>
               </ProtectedRoute>
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/track" element={<TrackPosturePage />} />
+            <Route path="/track" element={null} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/report" element={<ReportPage />} />
           </Route>

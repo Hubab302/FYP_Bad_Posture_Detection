@@ -109,6 +109,7 @@ export default function TrackPosturePage() {
   console.log("TRACK_POSTURE_BUILD_CURRENT");
   // Authoritative UI state machine
   const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
+  const [isHydrating, setIsHydrating] = useState(true);
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [cameraSessionKey, setCameraSessionKey] = useState<number>(Date.now());
@@ -129,6 +130,7 @@ export default function TrackPosturePage() {
   const [toasts, setToasts] = useState<{ id: number; durationStr: string; suggestion: string; postureTypes: string[] }[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const isStoppingRef = useRef(false);
   const toastIdRef = useRef(0);
   const snoozeUntilRef = useRef<number>(0);
   const snoozeTimeoutRef = useRef<number | null>(null);
@@ -180,6 +182,8 @@ export default function TrackPosturePage() {
         }
       } catch (err) {
         console.error('Failed to load daily totals:', err);
+      } finally {
+        setIsHydrating(false);
       }
     };
     init();
@@ -239,6 +243,7 @@ export default function TrackPosturePage() {
     };
 
     ws.onmessage = (event) => {
+      if (isStoppingRef.current) return;
       try {
         const data: TelemetryData = JSON.parse(event.data);
         latestTelemetryRef.current = data;
@@ -879,7 +884,7 @@ export default function TrackPosturePage() {
                 </h3>
               </div>
               <div className="mono" style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text)' }}>
-                {formatDuration(totalMonitoringDuration)}
+                {isHydrating && totalMonitoringDuration === 0 ? '--:--:--' : formatDuration(totalMonitoringDuration)}
               </div>
             </div>
 
@@ -926,3 +931,5 @@ export default function TrackPosturePage() {
     </div>
   );
 }
+
+

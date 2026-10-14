@@ -10,9 +10,24 @@ export default function ReportPage() {
   
   const today = getTodayStr();
   const maxStartDate = addDays(today, -7);
-  const [startDate, setStartDate] = useState(maxStartDate);
+  const [startDate, setStartDate] = useState<string>(() => {
+    const savedEnd = sessionStorage.getItem('app_selected_endDate');
+    if (savedEnd) {
+      const derivedStart = addDays(savedEnd, -6);
+      if (derivedStart <= maxStartDate) return derivedStart;
+    }
+    return maxStartDate;
+  });
   const [hasData, setHasData] = useState(false);
   const [eligible, setEligible] = useState(true);
+
+  // Sync chosen date to sessionStorage
+  useEffect(() => {
+    if (startDate) {
+      const derivedEnd = addDays(startDate, 6);
+      sessionStorage.setItem('app_selected_endDate', derivedEnd);
+    }
+  }, [startDate]);
 
   const loadReport = useCallback(async (targetStartDate: string) => {
     setLoading(true);

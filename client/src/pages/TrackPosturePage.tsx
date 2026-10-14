@@ -480,7 +480,7 @@ export default function TrackPosturePage() {
         signal: controller.signal
       });
       clearTimeout(timeoutId);
-      const data = await res.json();
+      await res.json();
 
       // Persist this tracking period to backend
       if (sessionId) {

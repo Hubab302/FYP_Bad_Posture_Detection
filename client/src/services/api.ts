@@ -91,6 +91,9 @@ export const trackingApi = {
 
   getSession: (sessionId: string) =>
     apiRequest(`/tracking/sessions/${sessionId}`),
+
+  getRecent: (limit: number = 5) =>
+    apiRequest<{ sessions: RecentSession[] }>(`/tracking/sessions/recent?limit=${limit}`),
 };
 
 // ─── History ───
@@ -103,14 +106,19 @@ export const historyApi = {
       reportEligibleDate: string | null;
     }>('/history/range'),
 
-  getHistory: (endDate: string) =>
-    apiRequest<{ history: HistoryRecord[] }>(`/history?endDate=${endDate}`),
+  getHistory: (endDate: string, days?: number) =>
+    apiRequest<{ history: HistoryRecord[] }>(
+      days ? `/history?endDate=${endDate}&days=${days}` : `/history?endDate=${endDate}`
+    ),
 };
 
 // ─── Reports ───
 export const reportApi = {
   generateWeekly: (endDate: string) =>
     apiRequest<{ report: WeeklyReport }>('/reports/weekly', { method: 'POST', body: { endDate } }),
+
+  generateMonthly: (endDate: string) =>
+    apiRequest<{ report: WeeklyReport }>('/reports/monthly', { method: 'POST', body: { endDate } }),
 };
 
 // ─── Types ───
@@ -124,6 +132,18 @@ export interface HistoryRecord {
   goodPosturePercentage: number;
   mostFrequentBadPosture: string | null;
   hasData?: boolean;
+}
+
+export interface RecentSession {
+  _id: string;
+  startedAt: string;
+  endedAt?: string | null;
+  status: 'active' | 'paused' | 'completed' | 'interrupted';
+  monitoringDurationSeconds: number;
+  goodDurationSeconds: number;
+  badDurationSeconds: number;
+  dominantBadPosture?: string | null;
+  alertCount: number;
 }
 
 export interface WeeklyReport {

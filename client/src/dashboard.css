@@ -1,0 +1,329 @@
+/* ═══════════════════════════════════════════════════════════════
+   Posture Dashboard UI — Viewport-Fitted, No-Scroll Layout
+   ═══════════════════════════════════════════════════════════════ */
+
+.reference-dashboard-wrapper {
+  max-width: 960px;
+  width: 100%;
+  height: calc(100vh - 3.2rem); /* Fit inside viewport with no scrollbar */
+  max-height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* ── Main Container Card ── */
+.reference-card-container {
+  background: #ffffff;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Top Blue Header Bar ── */
+.reference-header-bar {
+  background: #1565c0; /* Deep rich ocean blue from screenshot */
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.reference-header-title {
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reference-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Rolling Date Navigation inside header */
+.header-date-nav {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 18px;
+  padding: 2px 6px;
+  gap: 4px;
+}
+
+.header-nav-btn {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font-size: 0.95rem;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background 0.15s ease;
+}
+
+.header-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.header-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.header-date-text {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #ffffff;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.header-calendar-icon-btn {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  position: relative;
+}
+
+.header-calendar-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ── Dashboard Body ── */
+.reference-card-body {
+  padding: 1.15rem 1.35rem;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  justify-content: space-between;
+}
+
+/* ── Top Row: Summary & Stat Tiles ── */
+.reference-summary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.15rem;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 768px) {
+  .reference-summary-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Posture Summary Card (Left) */
+.summary-circular-card {
+  background: #ffffff;
+  border: 1px solid #eef2f6;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.section-box-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.35rem;
+  width: 100%;
+}
+
+.circular-gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.gauge-svg-wrapper {
+  position: relative;
+  width: 170px;
+  height: 170px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gauge-center-labels {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+}
+
+.gauge-good-label {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #16a34a; /* Green percentage */
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.gauge-poor-label {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #ef4444; /* Red percentage */
+  margin-top: 3px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* Right Side Stats Column (2 cards: Alerts & Avg Time) */
+.summary-stats-column {
+  background: #ffffff;
+  border: 1px solid #eef2f6;
+  border-radius: 12px;
+  padding: 0.85rem 1.1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 0.75rem;
+}
+
+.stat-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  padding: 0.8rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 10px;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.stat-item-row:hover {
+  background: #f1f5f9;
+  transform: translateX(2px);
+}
+
+.stat-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #334155;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.stat-number-text {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+/* ── Bottom Section: Posture Trend Chart ── */
+.trend-chart-card {
+  background: #ffffff;
+  border: 1px solid #eef2f6;
+  border-radius: 12px;
+  padding: 0.95rem 1.15rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 190px;
+}
+
+.trend-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.trend-legend-pills {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.legend-pill-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.775rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.legend-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.legend-color-dot.good {
+  background: #10b981;
+}
+
+.legend-color-dot.poor {
+  background: #ef4444;
+}
+
+.trend-chart-body {
+  width: 100%;
+  flex: 1;
+  min-height: 150px;
+  position: relative;
+}

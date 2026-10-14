@@ -85,9 +85,9 @@ router.get('/', requireAuth, async (req, res, next) => {
       const today = getTodayLocal();
       // Clamp future dates — never allow endDate beyond today
       const clampedEnd = endDate > today ? today : endDate;
-      const window = getRollingSevenDayWindow(clampedEnd);
-      from = window.startDate;
-      to = window.endDate;
+      const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 31);
+      to = clampedEnd;
+      from = addDaysToDateStr(to, -(days - 1));
     } else if (req.query.from && req.query.to) {
       // Legacy from/to parameters
       from = req.query.from;
@@ -107,8 +107,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       }
 
       const range = daysBetween(from, to);
-      if (range > 7) {
-        return res.status(400).json({ error: 'Maximum range is 7 days.' });
+      if (range > 31) {
+        return res.status(400).json({ error: 'Maximum range is 31 days.' });
       }
     } else {
       return res.status(400).json({ error: 'Either endDate or from+to query parameters are required.' });

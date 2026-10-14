@@ -47,3 +47,24 @@ export function addDays(dateStr: string, days: number): string {
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+export function getYesterdayStr(): string {
+  return addDays(getTodayStr(), -1);
+}
+
+export function formatChartDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+export function formatTimeOfDay(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}

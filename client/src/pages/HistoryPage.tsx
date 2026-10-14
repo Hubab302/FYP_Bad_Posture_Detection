@@ -10,8 +10,23 @@ export default function HistoryPage() {
   
   const today = getTodayStr();
   const maxStartDate = addDays(today, -6); // End date cannot exceed today
-  const [startDate, setStartDate] = useState(maxStartDate);
+  const [startDate, setStartDate] = useState<string>(() => {
+    const savedEnd = sessionStorage.getItem('app_selected_endDate');
+    if (savedEnd) {
+      const derivedStart = addDays(savedEnd, -6);
+      if (derivedStart <= maxStartDate) return derivedStart;
+    }
+    return maxStartDate;
+  });
   const [hasData, setHasData] = useState(false);
+
+  // Sync chosen date to sessionStorage
+  useEffect(() => {
+    if (startDate) {
+      const derivedEnd = addDays(startDate, 6);
+      sessionStorage.setItem('app_selected_endDate', derivedEnd);
+    }
+  }, [startDate]);
 
   useEffect(() => {
     loadRangeAndHistory(startDate);

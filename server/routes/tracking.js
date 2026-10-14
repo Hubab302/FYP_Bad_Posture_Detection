@@ -129,6 +129,21 @@ router.post('/sessions/:sessionId/stop', requireAuth, async (req, res, next) => 
   }
 });
 
+// ─── Get Recent Sessions for Dashboard / Activity ───
+router.get('/sessions/recent', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.session.userId;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 5, 20);
+    const sessions = await PostureSession.find({ userId })
+      .sort({ startedAt: -1 })
+      .limit(limit)
+      .select('startedAt endedAt status monitoringDurationSeconds goodDurationSeconds badDurationSeconds dominantBadPosture alertCount');
+    res.json({ sessions });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── Get Session Status ───
 router.get('/sessions/:sessionId', requireAuth, async (req, res, next) => {
   try {

@@ -132,4 +132,81 @@ router.post('/weekly', requireAuth, async (req, res, next) => {
   }
 });
 
+// ─── Generate Monthly Report ───
+// Supports rolling 30-day window ending on endDate (excluding current day / future dates)
+// API Contract:
+//   POST /api/reports/monthly
+//   Body: { endDate: "2026-10-12" }
+// Response shape:
+//   { report: PostureReport }
+router.post('/monthly', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.session.userId;
+    let from, to;
+
+    if (req.body.endDate) {
+      const endDate = req.body.endDate;
+      if (!isValidDateStr(endDate)) {
+        return res.status(400).json({ error: 'Invalid endDate format. Use YYYY-MM-DD.' });
+      }
+
+      const today = getTodayLocal();
+      if (endDate > today) {
+        return res.status(400).json({ error: 'Cannot generate report for future dates.' });
+      }
+
+      to = endDate;
+      from = addDaysToDateStr(to, -29); // 30-day completed window
+    } else if (req.body.from && req.body.to) {
+      from = req.body.from;
+      to = req.body.to;
+      if (!isValidDateStr(from) || !isValidDateStr(to)) {
+        return res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD.' });
+      }
+      const today = getTodayLocal();
+      if (to > today) {
+        return res.status(400).json({ error: 'Cannot generate report for future dates.' });
+      }
+      if (from > to) {
+        return res.status(400).json({ error: 'from date must be before to date.' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Either endDate or from+to are required.' });
+    }
+
+    // Check user data existence
+    const first = await PostureHistory.findOne({ userId }).sort({ localDate: 1 });
+    if (!first) {
+      return res.status(400).json({
+        error: 'Not sufficient data to generate a monthly report.',
+        eligible: false,
+      });
+    }
+
+    const stats = await aggregateWeeklyReport(userId, from, to);
+
+    const report = await PostureReport.findOneAndUpdate(
+      { userId, fromDate: from, toDate: to },
+      {
+        userId,
+        fromDate: from,
+        toDate: to,
+        generatedAt: new Date(),
+        totalMonitoringDurationSeconds: stats.monitoringDurationSeconds,
+        totalBadDurationSeconds: stats.badDurationSeconds,
+        totalGoodDurationSeconds: stats.goodDurationSeconds,
+        badPosturePercentage: stats.badPosturePercentage,
+        goodPosturePercentage: stats.goodPosturePercentage,
+        mostFrequentBadPosture: stats.mostFrequentBadPosture,
+      },
+      { upsert: true, new: true }
+    );
+
+    logger.info(`Monthly report generated: ${from} to ${to}`);
+    res.json({ report });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

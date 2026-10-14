@@ -39,7 +39,7 @@ interface TelemetryData {
 // ─── Constants ───
 const VISION_SERVICE_URL = 'http://localhost:8000';
 const WS_URL = 'ws://localhost:8000/ws/telemetry';
-const USE_NATIVE_GLOBAL_POSTURE_ALERT = true;
+const USE_NATIVE_GLOBAL_POSTURE_ALERT = false;
 
 // ─── Suggestion Mapping ───
 function getSuggestionForState(

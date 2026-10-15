@@ -799,7 +799,7 @@ class GlobalPostureAlert:
             - self.margin,
         )
 
-        y = self.margin+55
+        y = self.margin + 15
 
         self.root.geometry(
             f"{self.width}x{self.height}"
